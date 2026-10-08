@@ -1,0 +1,28 @@
+# Rust's output directory
+target
+
+# Local settings
+.soroban
+.stellar
+
+# Node.js and pnpm
+node_modules/
+**/node_modules/
+dist/
+coverage/
+**/.pnpm-store/
+
+# Secrets and local data
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+*.skey
+*.secret
+*.seed
+*.pem
+*.key
+*.db
+*.db-*
+data/

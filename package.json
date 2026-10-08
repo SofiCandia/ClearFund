@@ -1,0 +1,12 @@
+{
+  "name": "clearfun",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "build": "pnpm --filter @clearfun/sdk build && pnpm --filter @clearfun/backend build && pnpm --filter @clearfun/scripts build",
+    "smoke-test": "pnpm --filter @clearfun/scripts smoke-test",
+    "test": "pnpm --filter @clearfun/backend test",
+    "lint": "pnpm --filter @clearfun/backend lint",
+    "format:check": "pnpm --filter @clearfun/backend format:check"
+  }
+}

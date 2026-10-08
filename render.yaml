@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: clearfun-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: clearfun-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: STELLAR_NETWORK
+        value: testnet
+      - key: SOROBAN_RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: HORIZON_URL
+        value: https://horizon-testnet.stellar.org
+      - key: NETWORK_PASSPHRASE
+        value: Test SDF Network ; September 2015
+      - key: CONTRACT_ID
+        value: CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_URL
+        value: /app/data/app.db
+      - key: EVIDENCE_STORAGE_DIR
+        value: /app/data/evidence
+      - key: ALLOWED_ORIGINS
+        value: ""
+      - key: RATE_LIMIT_MAX
+        value: "100"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: INDEXER_POLL_INTERVAL_MS
+        value: "5000"
+      - key: INDEXER_START_LEDGER
+        value: "0"

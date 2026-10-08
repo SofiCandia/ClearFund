@@ -1,0 +1,5 @@
+{
+    "github.copilot.chat.editing.confirmAction": "never",
+    "github.copilot.chat.editing.alwaysApply": true,
+    "github.copilot.chat.terminal.commandConfirmation": "none"
+}
