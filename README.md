@@ -97,7 +97,7 @@ Sirve de filtro contra campañas basura y de compensación parcial si alguien de
 
 ```mermaid
 flowchart TB
-    U["Persona con Freighter<br/>(wallet)"] --> W["Portal<br/>app web en Base44"]
+    U["Persona con Freighter<br/>(wallet)"] --> W["ClearFund<br/>app web en Base44"]
     W -->|"arma y simula la transacción"| R["Soroban RPC · Testnet"]
     W -->|"la persona firma"| U
     R --> C[("Contrato donations<br/>Rust / Soroban")]
@@ -107,7 +107,7 @@ flowchart TB
 
 - **El contrato es la fuente de verdad.** Fondos, estados, plazos y reglas viven ahí. Ninguna pantalla puede saltárselo.
 - **El sistema no custodia nada.** Arma la transacción sin firmar, la firma el usuario en su wallet y se envía a la red.
-- **Las fotos se guardan en Portal; su hash queda en la blockchain.** La huella SHA-256 prueba que la imagen no cambió. 
+- **Las fotos se guardan en la web; su hash queda en la blockchain.** La huella SHA-256 prueba que la imagen no cambió. 
 - **La auditoría de cada campaña** compara los totales que muestra con los getters del contrato, para esa campaña.
 
 El repositorio incluye además un **backend de referencia** (API REST con Fastify y un indexer sobre SQLite). Es una implementación alternativa que lee el mismo contrato; la app en Base44 no depende de él.
