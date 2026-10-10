@@ -17,11 +17,9 @@
 
 ## La idea en un minuto
 
-Cuando donas a una campaña, tu plata pasa a manos de alguien y ahí se acaba lo que puedes ver. Confías en que la usaron bien, y casi siempre esa confianza descansa en una organización que dice no tener fines de lucro.
+Cuando donas a una campaña, tu dinero pasa a manos de alguien y ahí se acaba lo que puedes ver. Confías en que la usaron bien, y casi siempre esa confianza descansa en una organización que dice no tener fines de lucro.
 
-Portal cambia el orden de las cosas: **el dinero no va a la organización, va a un contrato.** Ahí se queda, dividido en etapas, y solo sale cuando una etapa se cumple. Y quien decide si el dinero sigue o se devuelve no es un tercero: **es cada donante, con su propia parte.**
-
-Se llama Portal por la puerta: cada etapa es una puerta cerrada, y los fondos solo pasan cuando se abre.
+ClearFund cambia el orden de las cosas: **el dinero no va a la organización, va a un contrato.** Ahí se queda, dividido en etapas, y solo sale cuando una etapa se cumple. Y quien decide si el dinero sigue o se devuelve no es un tercero: **es cada donante, con su propia parte.** Cada etapa es una puerta cerrada, y los fondos solo pasan cuando se abre.
 
 ---
 
@@ -40,11 +38,11 @@ flowchart LR
     H -->|"sí"| I["Campaña completada<br/>y garantía devuelta"]
 ```
 
-1. **La organización crea la campaña.** Define sus etapas con un monto cada una y deja una **garantía del 10 % de la meta** bloqueada en el contrato.
+1. **Crea la campaña.** Define sus etapas con un monto cada una y deja una **garantía del 10 % de la meta** bloqueada en el contrato.
 2. **Los donantes aportan.** El dinero queda en el contrato. No se puede donar más de lo que falta para la meta.
-3. **La organización sube evidencia** de la primera etapa: fotos y descripción. En la blockchain queda la huella (hash) de esa evidencia.
-4. **Se abre una ventana pública** (48 horas en la app). Mientras está abierta, **cada donante puede retirar su parte**. Solo la suya.
-5. **Cuando la ventana cierra, cualquier persona puede liberar la etapa.** Se paga con lo que dejaron los donantes que se quedaron.
+3. **La organización sube evidencia** de la primera etapa, fotos y descripción. En la blockchain queda la huella (hash) como evidencia.
+4. **Se abre una ventana pública** Durante 48 horas, mientras está abierta, **cada donante puede retirar su parte**, solo la suya.
+5. **Cuando la ventana cierra, se libera la etapa.** Se paga con lo que dejaron los donantes que se quedaron.
 6. **Se repite etapa por etapa.** Al completar la última, la garantía vuelve a la organización.
 7. **Si la organización abandona**, pasado el plazo los donantes retiran lo que queda y **la garantía se reparte entre ellos**.
 
@@ -58,30 +56,11 @@ stateDiagram-v2
     Liberada --> [*]
 ```
 
-Durante `EvidenciaPublicada` los donantes pueden salir. Que salgan no cambia el estado de la etapa: solo reduce el dinero disponible para liberar.
+Durante `EvidenciaPublicada` los donantes pueden salir. Que salgan no cambia el estado de la etapa: solo reduce el dinero disponible para liberar. Que los donantes no retiren su aporte, depende de que tan trasparentes sean las evidencias subidas con anterioridad.
 
 ---
 
-## La decisión de diseño que importa
-
-La primera versión de Portal tenía **verificadores**: wallets que aprobaban cada etapa, con un umbral de M firmas de N. La descartamos por una razón concreta.
-
-> Quien crea la campaña puede controlar varias wallets y ponerlas como "verificadores independientes". Se aprueba a sí mismo y el sistema de transparencia no sirve de nada. Es un ataque Sybil.
-
-Las dos salidas obvias tampoco convencían:
-
-| Alternativa | Por qué la descartamos |
-|---|---|
-| Verificadores acreditados (organizaciones, registro, multifirma) | Reinstala al intermediario que la blockchain debía eliminar. Hay organizaciones "sin fines de lucro" cuyos dueños viven con bastante más holgura que sus donantes. |
-| Disputas abiertas a cualquiera | Cualquiera puede congelar los fondos de todos sin una razón real, solo por molestar. |
-
-**Lo que quedó: salida individual.** Nadie aprueba nada y nadie puede congelar nada. Una wallet maliciosa solo puede hacer una cosa: retirar su propio dinero. Si el creador pone diez wallets amigas, esas wallets solo deciden sobre lo que ellas mismas depositaron.
-
-> Ninguna blockchain puede comprobar que algo ocurrió en el mundo real. Alguien tiene que juzgar la evidencia. En Portal, ese alguien es cada donante, y solo sobre su propia plata.
-
----
-
-## Un ejemplo con números
+## Ejemplo
 
 Campaña con una etapa de **50 XLM**. Ana dona 60 y Beto dona 40, así que el contrato retiene 100.
 
@@ -134,9 +113,9 @@ flowchart TB
 ```
 
 - **El contrato es la fuente de verdad.** Fondos, estados, plazos y reglas viven ahí. Ninguna pantalla puede saltárselo.
-- **La app no custodia nada.** Arma la transacción sin firmar, la firma el usuario en su wallet y se envía a la red. Portal nunca ve una clave secreta.
-- **Las fotos se guardan en Portal; su hash queda en la blockchain.** La huella SHA-256 prueba que la imagen no cambió. Subir las imágenes completas a la cadena no es viable.
-- **La auditoría de cada campaña** compara los totales que muestra la app con los getters del contrato, para esa campaña.
+- **El sistema no custodia nada.** Arma la transacción sin firmar, la firma el usuario en su wallet y se envía a la red.
+- **Las fotos se guardan en Portal; su hash queda en la blockchain.** La huella SHA-256 prueba que la imagen no cambió. 
+- **La auditoría de cada campaña** compara los totales que muestra con los getters del contrato, para esa campaña.
 
 El repositorio incluye además un **backend de referencia** (API REST con Fastify y un indexer sobre SQLite). Es una implementación alternativa que lee el mismo contrato; la app en Base44 no depende de él.
 
@@ -180,11 +159,9 @@ Los tests del contrato cubren: flujo feliz, donación sobre la meta, la organiza
 ## Límites que no vamos a esconder
 
 - **El silencio equivale a aceptar.** Quien no revisa su donación durante la ventana deja que se libere.
-- **Una evidencia falsa pero convincente puede engañar.** El contrato no puede verificar el mundo real; solo le da a cada donante tiempo y poder para decidir.
-- **La garantía de 10 % no iguala una estafa grande.** Desincentiva, no compensa del todo.
-- **Portal puede ocultar una campaña en su sitio, pero no toca los fondos.** Un panel interno permite ocultar campañas en la interfaz; el contrato no tiene administrador y nadie puede mover dinero.
+- **Evidencia falsa.** El contrato no puede verificar el mundo real; solo le da a cada donante tiempo y poder para decidir.
 - **Es un prototipo en Testnet.** El contrato no está auditado y no debe usarse con fondos de valor real. El XLM nativo se usa mediante su Stellar Asset Contract; no hay USDC oficial configurado.
-- Todo en la cadena es público e irreversible: no subas datos personales en la evidencia.
+- Todo en la cadena es público e irreversible.
 
 ---
 
@@ -231,7 +208,7 @@ pnpm smoke-test
 pnpm --filter @clearfun/scripts exec tsx seed.ts
 ```
 
-Una nota de quien lo sufrió: los scripts miden el tiempo con el reloj de la red, no el de tu computador. Si tu reloj va adelantado, el script cree que la ventana ya cerró y el contrato responde `WindowNotOpen` (error 16). Por eso el smoke-test espera un tiempo fijo.
+Nota: Los scripts miden el tiempo con el reloj de la red. Si tu reloj va adelantado, el script cree que la ventana ya cerró y el contrato responde `WindowNotOpen` (error 16). Por eso el smoke-test espera un tiempo fijo.
 
 ---
 
@@ -261,7 +238,7 @@ docs/                  API del contrato, seguridad, arquitectura y notas
 
 - Auditoría externa del contrato antes de mover fondos reales.
 - Un activo estable (USDC) con emisor verificado.
-- Pruebas con usuarios reales para ver si 48 horas es el plazo correcto.
+- Pruebas con usuarios reales para validar si 48 horas es un plazo adecuado.
 - Aviso al donante cuando se abra una ventana, para que el silencio no sea por descuido.
 
 ---
