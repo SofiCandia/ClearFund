@@ -1,100 +1,275 @@
-# ClearFund
+<div align="center">
 
-**Donaciones transparentes con salida individual, sin verificadores ni admin.**
+# Portal
 
-ClearFund retiene fondos de campañas en un contrato Soroban de Stellar. La
-organización publica evidencia por hitos y se abre una ventana pública; cada
-donante puede retirar su propia participación. Al vencer la ventana, cualquier
-cuenta puede liberar la etapa.
+**Donaciones que se pueden auditar, sobre la red Stellar.**
 
-## Modelo de fondos
+*Abre una puerta.*
 
-- Cada campaña contabiliza saldo retenido (`held`), participaciones
-  (`total_shares`) y época. Los retiros son proporcionales al valor actual de
-  las participaciones.
-- La organización deposita una garantía calculada por BPS configurados una
-  sola vez. Se devuelve al completar; tras abandono, puede añadirse al fondo
-  de salida. No hay privilegios de administrador después de inicializar.
-- El contrato impide superar la meta financiable (`ExceedsGoal`).
-- No existen verificadores, votos, aprobaciones ni disputas.
+![Stellar](https://img.shields.io/badge/Stellar-Testnet-0A2F6E?style=flat-square)
+![Soroban](https://img.shields.io/badge/Soroban-contrato%20en%20Rust-2FD6BD?style=flat-square)
+![Estado](https://img.shields.io/badge/estado-prototipo-FFAD45?style=flat-square)
+![Hackathon](https://img.shields.io/badge/Stellar-Find%20Your%20Way%20·%20University%20Track-071D45?style=flat-square)
 
-**Limitaciones:** el silencio durante la ventana equivale a aceptar; una
-evidencia falsa pero convincente puede engañar; la garantía no cubre una estafa
-grande. ClearFund es un prototipo de Testnet, no una entidad financiera ni un
-contrato auditado para fondos de valor.
+</div>
 
-## Red y contratos
+---
 
-- El identificador anterior se conserva en `.env` como
-  `LEGACY_CONTRACT_ID`; campañas legacy no se mezclan con la indexación nueva.
-- El `CONTRACT_ID` nuevo requiere despliegue Testnet. Si aún no se completó,
-  permanece vacío y el indexer no conecta a la instancia legacy.
-- XLM nativo usa un Stellar Asset Contract (SAC). No se debe presentar un
-  activo de prueba como USDC oficial.
-- Evidencia y transacciones en Testnet son públicas e irreversibles; no uses
-  datos personales.
+## La idea en un minuto
 
-## Inicio rápido
+Cuando donas a una campaña, tu plata pasa a manos de alguien y ahí se acaba lo que puedes ver. Confías en que la usaron bien, y casi siempre esa confianza descansa en una organización que dice no tener fines de lucro.
 
-Requisitos: Rust 1.84+, target `wasm32v1-none`, Stellar CLI, Node.js 20+ y pnpm.
+Portal cambia el orden de las cosas: **el dinero no va a la organización, va a un contrato.** Ahí se queda, dividido en etapas, y solo sale cuando una etapa se cumple. Y quien decide si el dinero sigue o se devuelve no es un tercero: **es cada donante, con su propia parte.**
+
+Se llama Portal por la puerta: cada etapa es una puerta cerrada, y los fondos solo pasan cuando se abre.
+
+---
+
+## Cómo funciona
+
+```mermaid
+flowchart LR
+    A["Organización crea la campaña<br/>(etapas + garantía del 10 %)"] --> B["Donantes aportan<br/>al contrato"]
+    B --> C["Organización sube evidencia<br/>de la etapa"]
+    C --> D{{"Ventana pública<br/>(48 h)"}}
+    D -->|"el donante se retira"| E["Recupera SU parte"]
+    D -->|"el donante se queda"| F["Cierra la ventana"]
+    F --> G["Cualquiera libera la etapa"]
+    G --> H{"¿Última etapa?"}
+    H -->|"no"| C
+    H -->|"sí"| I["Campaña completada<br/>y garantía devuelta"]
+```
+
+1. **La organización crea la campaña.** Define sus etapas con un monto cada una y deja una **garantía del 10 % de la meta** bloqueada en el contrato.
+2. **Los donantes aportan.** El dinero queda en el contrato. No se puede donar más de lo que falta para la meta.
+3. **La organización sube evidencia** de la primera etapa: fotos y descripción. En la blockchain queda la huella (hash) de esa evidencia.
+4. **Se abre una ventana pública** (48 horas en la app). Mientras está abierta, **cada donante puede retirar su parte**. Solo la suya.
+5. **Cuando la ventana cierra, cualquier persona puede liberar la etapa.** Se paga con lo que dejaron los donantes que se quedaron.
+6. **Se repite etapa por etapa.** Al completar la última, la garantía vuelve a la organización.
+7. **Si la organización abandona**, pasado el plazo los donantes retiran lo que queda y **la garantía se reparte entre ellos**.
+
+### Estados de una etapa
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pendiente
+    Pendiente --> EvidenciaPublicada: la organización sube evidencia
+    EvidenciaPublicada --> Liberada: pasa la ventana y alguien libera
+    Liberada --> [*]
+```
+
+Durante `EvidenciaPublicada` los donantes pueden salir. Que salgan no cambia el estado de la etapa: solo reduce el dinero disponible para liberar.
+
+---
+
+## La decisión de diseño que importa
+
+La primera versión de Portal tenía **verificadores**: wallets que aprobaban cada etapa, con un umbral de M firmas de N. La descartamos por una razón concreta.
+
+> Quien crea la campaña puede controlar varias wallets y ponerlas como "verificadores independientes". Se aprueba a sí mismo y el sistema de transparencia no sirve de nada. Es un ataque Sybil.
+
+Las dos salidas obvias tampoco convencían:
+
+| Alternativa | Por qué la descartamos |
+|---|---|
+| Verificadores acreditados (organizaciones, registro, multifirma) | Reinstala al intermediario que la blockchain debía eliminar. Hay organizaciones "sin fines de lucro" cuyos dueños viven con bastante más holgura que sus donantes. |
+| Disputas abiertas a cualquiera | Cualquiera puede congelar los fondos de todos sin una razón real, solo por molestar. |
+
+**Lo que quedó: salida individual.** Nadie aprueba nada y nadie puede congelar nada. Una wallet maliciosa solo puede hacer una cosa: retirar su propio dinero. Si el creador pone diez wallets amigas, esas wallets solo deciden sobre lo que ellas mismas depositaron.
+
+> Ninguna blockchain puede comprobar que algo ocurrió en el mundo real. Alguien tiene que juzgar la evidencia. En Portal, ese alguien es cada donante, y solo sobre su propia plata.
+
+---
+
+## Un ejemplo con números
+
+Campaña con una etapa de **50 XLM**. Ana dona 60 y Beto dona 40, así que el contrato retiene 100.
+
+| Momento | Retenido | Ana | Beto |
+|---|---:|---:|---:|
+| Ambos donan | 100 | 60 | 40 |
+| La organización sube evidencia, se abre la ventana | 100 | 60 | 40 |
+| Beto no está convencido y se retira (recupera 40) | 60 | 60 | 0 |
+| Cierra la ventana y se libera la etapa (50 a la organización) | 10 | 10 | 0 |
+
+Beto salió con todo lo suyo. Ana siguió y su dinero financió la etapa. A nadie se le pidió permiso para nada.
+
+### Cómo se cuenta por dentro
+
+El contrato lleva la contabilidad por **participaciones**, como un fondo común:
+
+- Al donar `x`, recibes `x` participaciones si eres el primero, y `x × S / H` si no (`S` = participaciones totales, `H` = dinero retenido).
+- Tu valor en cualquier momento es `tus participaciones × H / S`.
+- Cuando se libera una etapa baja `H` y las participaciones no cambian, así que **todos pierden en la misma proporción**.
+- Si `H` llega a cero, `S` vuelve a cero y la "época" de la campaña sube. Las posiciones antiguas valen cero y no pueden contaminar donaciones nuevas.
+- Toda la aritmética es checked y la división entera trunca hacia abajo, así que el contrato nunca paga más de lo que tiene.
+
+---
+
+## Garantía del creador
+
+Publicar una campaña tiene costo. La organización deja **10 % de la meta** bloqueado desde el primer día.
+
+| Si... | La garantía... |
+|---|---|
+| Completa todas las etapas | Vuelve a la organización |
+| Cancela antes de recibir donaciones | Vuelve a la organización |
+| Abandona (vence el plazo sin completar) | Pasa a los donantes que aún tienen fondos en el contrato, en proporción |
+| Vence el plazo y no queda ningún donante | La organización la recupera |
+
+Sirve de filtro contra campañas basura y de compensación parcial si alguien desaparece.
+
+---
+
+## Arquitectura
+
+```mermaid
+flowchart TB
+    U["Persona con Freighter<br/>(wallet)"] --> W["Portal<br/>app web en Base44"]
+    W -->|"arma y simula la transacción"| R["Soroban RPC · Testnet"]
+    W -->|"la persona firma"| U
+    R --> C[("Contrato donations<br/>Rust / Soroban")]
+    C --> T["Token XLM (SAC)"]
+    C -.->|"eventos"| W
+```
+
+- **El contrato es la fuente de verdad.** Fondos, estados, plazos y reglas viven ahí. Ninguna pantalla puede saltárselo.
+- **La app no custodia nada.** Arma la transacción sin firmar, la firma el usuario en su wallet y se envía a la red. Portal nunca ve una clave secreta.
+- **Las fotos se guardan en Portal; su hash queda en la blockchain.** La huella SHA-256 prueba que la imagen no cambió. Subir las imágenes completas a la cadena no es viable.
+- **La auditoría de cada campaña** compara los totales que muestra la app con los getters del contrato, para esa campaña.
+
+El repositorio incluye además un **backend de referencia** (API REST con Fastify y un indexer sobre SQLite). Es una implementación alternativa que lee el mismo contrato; la app en Base44 no depende de él.
+
+### Interfaz
+
+| Sección | Qué hace |
+|---|---|
+| **Inicio** | Presenta el proyecto y las campañas destacadas |
+| **Campañas** | Explorar, y entrar a cada una para donar, ver etapas, registro de donaciones y **Auditar** |
+| **Cómo funciona** | Explicación del flujo para quien llega por primera vez |
+| **Mi panel** | Para quien crea campañas: subir evidencia de la siguiente etapa, ver estado de cada una |
+| **Donaciones** | Las campañas a las que doné, con su valor actual. Desde ahí puedo entrar a cada una o retirar mi parte |
+
+Cada registro en pantalla enlaza a su transacción en [stellar.expert](https://stellar.expert/explorer/testnet).
+
+---
+
+## Probado en Testnet
+
+Contrato final desplegado: [`CDF2FZ4N7ECQUK4Y2B2HVL6FT7A6OBRYZAOEA4MU45KYJBRMWE24SFA5`](https://lab.stellar.org/r/testnet/contract/CDF2FZ4N7ECQUK4Y2B2HVL6FT7A6OBRYZAOEA4MU45KYJBRMWE24SFA5)
+
+Una campaña completa, de punta a punta, con transacciones reales (campaña 9):
+
+| Paso | Transacción |
+|---|---|
+| Crear campaña con 2 etapas y garantía | [3b311e7a…](https://stellar.expert/explorer/testnet/tx/3b311e7a7e017a0c4a6bc84395ac99bf0c12ae7d70c90708c0216fb4a7460582) |
+| Donante 1 aporta | [91814832…](https://stellar.expert/explorer/testnet/tx/91814832ca786ac7d74310f2406dc86fba88a7c297806c4011d993e974c67be1) |
+| Donante 2 aporta | [2aafbdee…](https://stellar.expert/explorer/testnet/tx/2aafbdee21a253edd2f27228ff5d58ca50a6b9cd753433b6a2c9bc62a3aa3fe0) |
+| Evidencia de la etapa 1 | [4bda354d…](https://stellar.expert/explorer/testnet/tx/4bda354d38c0abc4cc91782df0e99fa1eaacfb693b4bea64c1fb0e61ce6672f0) |
+| **Donante 1 se retira dentro de la ventana** | [0c91bf68…](https://stellar.expert/explorer/testnet/tx/0c91bf68f46885722ddbd1e5d77466ae12aad23ec8dd95fc0d6001c6c14488f7) |
+| **Liberación de la etapa 1** (llamada por una cuenta cualquiera) | [4cda1744…](https://stellar.expert/explorer/testnet/tx/4cda1744b2314669a308964eb1f15c177ca51c99b191d8ab5d0fb02308af6848) |
+| Evidencia de la etapa 2 | [c9a237dc…](https://stellar.expert/explorer/testnet/tx/c9a237dcf81e4600b92f5eb3e7c68f00d37c91e83758dc2d2a20b10b789587cc) |
+| **Liberación final y garantía devuelta** | [3708dc94…](https://stellar.expert/explorer/testnet/tx/3708dc94500ca00fb8d324c3248bb671beea89e320616d31c59befce16ba34e4) |
+
+El script comprueba al final que la organización recibió exactamente lo liberado, que la garantía volvió y que el saldo del contrato cuadra. Hay una segunda campaña completa (la 10) generada por el seed, en [`docs/SEED_RESULT.md`](docs/SEED_RESULT.md).
+
+Los tests del contrato cubren: flujo feliz, donación sobre la meta, la organización donando a su propia campaña, etapas fuera de orden, retiro dentro y fuera de ventana, liberación antes de tiempo, abandono con reparto de garantía, reinicio de época, cancelación y redondeo.
+
+---
+
+## Límites que no vamos a esconder
+
+- **El silencio equivale a aceptar.** Quien no revisa su donación durante la ventana deja que se libere.
+- **Una evidencia falsa pero convincente puede engañar.** El contrato no puede verificar el mundo real; solo le da a cada donante tiempo y poder para decidir.
+- **La garantía de 10 % no iguala una estafa grande.** Desincentiva, no compensa del todo.
+- **Portal puede ocultar una campaña en su sitio, pero no toca los fondos.** Un panel interno permite ocultar campañas en la interfaz; el contrato no tiene administrador y nadie puede mover dinero.
+- **Es un prototipo en Testnet.** El contrato no está auditado y no debe usarse con fondos de valor real. El XLM nativo se usa mediante su Stellar Asset Contract; no hay USDC oficial configurado.
+- Todo en la cadena es público e irreversible: no subas datos personales en la evidencia.
+
+---
+
+## Reglas del contrato en una tabla
+
+| Función | Quién la llama | Cuándo |
+|---|---|---|
+| `create_campaign` | Organización | Siempre; deja la garantía |
+| `donate` | Donante (nunca la organización de esa campaña) | Campaña activa, antes del plazo y sin pasar la meta |
+| `submit_evidence` | Organización | Etapas en orden y con fondos suficientes |
+| `withdraw` | Donante | Con ventana abierta, o vencido el plazo sin campaña completada |
+| `release_milestone` | **Cualquiera** | Ventana vencida y fondos retenidos |
+| `reclaim_bond` | Organización | Plazo vencido y sin donantes con fondos |
+| `cancel_campaign` | Organización | Solo antes de recibir donaciones |
+
+Parámetros: ventana de 60 s a 30 días (48 h por defecto en la app y 60 s en modo demo), plazo máximo de 1 año, garantía configurada una sola vez al inicializar. No existe administrador, ni verificadores, ni votos, ni disputas. Códigos de error y eventos en [`docs/CONTRACT_API.md`](docs/CONTRACT_API.md).
+
+---
+
+## Correrlo tú mismo
+
+Requisitos: Rust 1.84+ con el target `wasm32v1-none`, Stellar CLI, Node.js 20+ y pnpm.
 
 ```powershell
 pnpm install --frozen-lockfile
-cargo test
-stellar contract build
+cargo test -p donations
+stellar contract build --package donations
 pnpm build
-pnpm test
-pnpm lint
-pnpm format:check
 ```
 
-Para trabajar con el backend local, define el `CONTRACT_ID` nuevo y los
-endpoints en `.env`; `DATABASE_URL` usa por defecto una SQLite nueva para esta
-versión:
+**Red de Testnet.** Si el CLI se queja de `network passphrase is missing`, define la red de forma explícita:
 
 ```powershell
-pnpm --filter @clearfun/backend dev
+$env:STELLAR_RPC_URL = "https://soroban-testnet.stellar.org"
+$env:STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 ```
 
-Swagger se sirve en `http://localhost:3000/docs`. El detalle de contrato,
-despliegue e indexación está en [`docs/DEPLOY.md`](docs/DEPLOY.md).
+**Desplegar.** Hace falta una cuenta con fondos de Friendbot. El secreto va en `.env` (que está en `.gitignore`) y jamás en el repo ni en el chat. Los scripts `scripts/deploy.ps1` y `scripts/deploy.sh` automatizan el despliegue; los pasos a mano están en [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
-## Desplegar y probar en Testnet
-
-Los scripts `scripts/deploy.ps1` y `scripts/deploy.sh` construyen WASM,
-regeneran el SDK, despliegan el contrato nuevo e inicializan BPS=1000 con
-autorización explícita. Preservan el ID anterior como `LEGACY_CONTRACT_ID`.
-Se requiere `DEPLOYER_SECRET` financiado en Testnet; no imprimas ni compartas
-el secreto.
-
-Después de desplegar y configurar cuentas demo, se pueden ejecutar:
+**Probar el flujo completo** en Testnet (tarda unos minutos porque espera las ventanas):
 
 ```powershell
-pnpm --filter @clearfun/scripts smoke-test
-pnpm --filter @clearfun/scripts seed
+pnpm smoke-test
+pnpm --filter @clearfun/scripts exec tsx seed.ts
 ```
 
-El smoke crea dos hitos, dos donantes, un retiro en ventana, dos liberaciones y
-verifica la devolución de garantía. El seed crea una campaña completada, una
-con ventana abierta y una recién creada; las ventanas son de 90 segundos.
-Estos comandos hacen transacciones públicas reales en Testnet.
+Una nota de quien lo sufrió: los scripts miden el tiempo con el reloj de la red, no el de tu computador. Si tu reloj va adelantado, el script cree que la ventana ya cerró y el contrato responde `WindowNotOpen` (error 16). Por eso el smoke-test espera un tiempo fijo.
 
-## Repositorio y documentos
+---
+
+## Estructura del repositorio
 
 ```text
-contracts/donations/  Contrato Soroban y pruebas
-packages/sdk/         Bindings TypeScript regenerados del WASM
-backend/              API Fastify, indexer y SQLite
-scripts/              Deploy, smoke-test y seed
-docs/                 API, seguridad, arquitectura y handoff
+contracts/donations/   Contrato Soroban en Rust y sus tests
+packages/sdk/          Bindings TypeScript generados desde el WASM
+backend/               API Fastify + indexer (implementación de referencia)
+scripts/               Deploy, smoke-test y seed
+docs/                  API del contrato, seguridad, arquitectura y notas
 ```
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): fondos, participaciones y
-  límites de confianza.
-- [`docs/CONTRACT_API.md`](docs/CONTRACT_API.md): métodos, errores y eventos.
-- [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md): controles y
-  pendientes preproducción.
-- [`docs/FRONTEND_HANDOFF.md`](docs/FRONTEND_HANDOFF.md): endpoints y reglas de
-  activación de botones.
-- [`docs/BASE44_CHANGES.md`](docs/BASE44_CHANGES.md): cambios para Base44.
-- [`docs/PROGRESS.md`](docs/PROGRESS.md): avance de esta migración.
+| Documento | Contenido |
+|---|---|
+| [`CONTRACT_API.md`](docs/CONTRACT_API.md) | Funciones, errores y eventos |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Fondos, participaciones y límites de confianza |
+| [`SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md) | Controles y pendientes antes de producción |
+| [`BASE44_CHANGES.md`](docs/BASE44_CHANGES.md) | Reglas de cada botón y cambios de interfaz |
+| [`PITCH_SCRIPT.md`](docs/PITCH_SCRIPT.md) | Guion de la presentación |
+
+**Contrato anterior (legacy):** `CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI` es la primera versión, con verificadores. Se conserva como historial y no forma parte de la solución final.
+
+---
+
+## Qué sigue
+
+- Auditoría externa del contrato antes de mover fondos reales.
+- Un activo estable (USDC) con emisor verificado.
+- Pruebas con usuarios reales para ver si 48 horas es el plazo correcto.
+- Aviso al donante cuando se abra una ventana, para que el silencio no sea por descuido.
+
+---
+
+<div align="center">
+
+Hecho en Chile para el University Track del hackathon **Stellar · Find Your Way**.
+
+*Donaciones que se pueden auditar, sobre la red Stellar.*
+
+</div>
