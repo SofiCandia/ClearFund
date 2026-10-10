@@ -4,8 +4,6 @@
 
 **Donaciones que se pueden auditar, sobre la red Stellar.**
 
-*Abre una puerta.*
-
 </div>
 
 ---
