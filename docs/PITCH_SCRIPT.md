@@ -14,7 +14,7 @@ Campaña con meta, monto retenido, hitos y tiempo restante.
 ## (b) Propuesta — 0:35 a 1:05
 
 **Locución:**  
-“El aporte queda en un contrato de Stellar y la organización publica evidencia
+“El aporte queda en un contrato de Stellar y la organización evidencia
 por etapas. Al abrirse una ventana pública, cada donante decide si retira su
 propia parte. Si nadie sale, al terminar la ventana cualquiera puede liberar
 esa etapa. La organización deposita una garantía que vuelve al completar la
