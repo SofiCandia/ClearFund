@@ -10,7 +10,6 @@ import {
 const CONTRACT_ID = "CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI";
 const ORG = "GBZMF2I4QQCDVZY3R55F7667WQOBUALKBX6IPUMLAPNJCIU6KVLOPMHN";
 const DONOR = "GA5CSTXBHKQTMCV75UWPFHLABDXTZO3NPXGMFJNW33KCDFXSCMNZOEQY";
-const VERIFIER = "GC3XAM7HEDTQVIPPZE3C7KBCBZYKR3XSTKWUUFDTZW55YNKDNOCWDCAH";
 const evidence = Buffer.from("a".repeat(64), "hex");
 
 const campaignSnapshot = {
@@ -21,11 +20,16 @@ const campaignSnapshot = {
   description_uri: "https://example.org/campaign",
   goal: 100n,
   deadline: 2_000_000_000n,
-  threshold: 1,
   total_raised: 100n,
   total_released: 100n,
+  total_withdrawn: 0n,
+  held: 0n,
+  total_shares: 0n,
+  epoch: 1,
+  window_secs: 60n,
+  bond_amount: 10n,
+  bond_state: { tag: "Returned" },
   status: { tag: "Completed" },
-  verifiers: [VERIFIER],
   milestones: [
     {
       description: "First milestone",
@@ -33,7 +37,8 @@ const campaignSnapshot = {
       status: { tag: "Released" },
       evidence_hash: evidence,
       evidence_uri: "https://example.org/evidence",
-      approvals: [VERIFIER],
+      window_end: 200n,
+      released_amount: 100n,
     },
   ],
 };
@@ -104,23 +109,17 @@ function campaignEvents(): RpcEvent[] {
       101,
       "donated",
       [u32(1), nativeToScVal(DONOR, { type: "address" })],
-      { amount: i128(100n), total_raised: i128(100n) },
+      { amount: i128(100n), shares: i128(100n) },
     ),
     event("00102-0000000000", 102, "evidence_submitted", [u32(1), u32(0)], {
       org: nativeToScVal(ORG, { type: "address" }),
       evidence_hash: nativeToScVal(evidence, { type: "bytes" }),
       evidence_uri: scString("https://example.org/evidence"),
+      window_end: nativeToScVal(200n, { type: "u64" }),
     }),
     event(
       "00103-0000000000",
       103,
-      "milestone_approved",
-      [u32(1), u32(0), nativeToScVal(VERIFIER, { type: "address" })],
-      { approvals_count: u32(1) },
-    ),
-    event(
-      "00104-0000000000",
-      104,
       "milestone_released",
       [u32(1), u32(0)],
       {
@@ -130,13 +129,30 @@ function campaignEvents(): RpcEvent[] {
       0,
     ),
     event(
-      "00104-0000000001",
-      104,
+      "00103-0000000001",
+      103,
       "campaign_completed",
-      [u32(1), nativeToScVal(ORG, { type: "address" })],
+      [u32(1)],
       { total_released: i128(100n) },
       0,
     ),
+    event("00103-0000000002", 103, "bond_returned", [u32(1)], {
+      org: nativeToScVal(ORG, { type: "address" }),
+      amount: i128(10n),
+    }),
+    event(
+      "00104-0000000000",
+      104,
+      "exited",
+      [u32(1), nativeToScVal(DONOR, { type: "address" })],
+      { amount: i128(100n), shares: i128(100n) },
+    ),
+    event("00105-0000000000", 105, "bond_slashed", [u32(1)], {
+      amount: i128(10n),
+    }),
+    event("00106-0000000000", 106, "campaign_cancelled", [u32(1)], {
+      org: nativeToScVal(ORG, { type: "address" }),
+    }),
   ];
 }
 
@@ -193,7 +209,7 @@ describe("SorobanEventIndexer", () => {
 
     const indexedCount = await indexer.pollOnce();
 
-    expect(indexedCount).toBe(6);
+    expect(indexedCount).toBe(9);
     expect(database.getLastLedger()).toBe(110);
     expect(
       database.connection
@@ -203,9 +219,12 @@ describe("SorobanEventIndexer", () => {
       { type: "campaign_created" },
       { type: "donated" },
       { type: "evidence_submitted" },
-      { type: "milestone_approved" },
       { type: "milestone_released" },
       { type: "campaign_completed" },
+      { type: "bond_returned" },
+      { type: "exited" },
+      { type: "bond_slashed" },
+      { type: "campaign_cancelled" },
     ]);
     expect(
       database.connection
@@ -222,20 +241,20 @@ describe("SorobanEventIndexer", () => {
     expect(
       database.connection
         .prepare(
-          "SELECT amount, refunded_amount FROM donations WHERE campaign_id = 1 AND donor = ?",
+          "SELECT amount, shares, withdrawn FROM donations WHERE campaign_id = 1 AND donor = ?",
         )
         .get(DONOR),
-    ).toEqual({ amount: "100", refunded_amount: "0" });
+    ).toEqual({ amount: "100", shares: "0", withdrawn: "100" });
     expect(
       database.connection
         .prepare(
-          "SELECT status, evidence_hash, approvals_json FROM milestones WHERE campaign_id = 1 AND milestone_index = 0",
+          "SELECT status, evidence_hash, released_amount FROM milestones WHERE campaign_id = 1 AND milestone_index = 0",
         )
         .get(),
     ).toEqual({
       status: "Released",
       evidence_hash: evidence.toString("hex"),
-      approvals_json: JSON.stringify([VERIFIER]),
+      released_amount: "100",
     });
     const indexedEvent = database.connection
       .prepare(
@@ -258,7 +277,7 @@ describe("SorobanEventIndexer", () => {
 
     expect(
       database.connection.prepare("SELECT COUNT(*) AS count FROM events").get(),
-    ).toEqual({ count: 6 });
+    ).toEqual({ count: 9 });
     expect(
       database.connection
         .prepare(
@@ -283,7 +302,7 @@ describe("SorobanEventIndexer", () => {
     expect(database.getLastLedger()).toBe(0);
     expect(
       database.connection.prepare("SELECT COUNT(*) AS count FROM events").get(),
-    ).toEqual({ count: 6 });
+    ).toEqual({ count: 9 });
 
     await indexer.pollOnce();
 
@@ -297,7 +316,7 @@ describe("SorobanEventIndexer", () => {
     ).toEqual({ amount: "100" });
     expect(
       database.connection.prepare("SELECT COUNT(*) AS count FROM events").get(),
-    ).toEqual({ count: 6 });
+    ).toEqual({ count: 9 });
   });
 
   it("stores contract events with no non-indexed value", async () => {
@@ -306,8 +325,8 @@ describe("SorobanEventIndexer", () => {
       "00105-0000000000",
       105,
       "campaign_cancelled",
-      [u32(1), nativeToScVal(ORG, { type: "address" })],
-      {},
+      [u32(1)],
+      { org: nativeToScVal(ORG, { type: "address" }) },
       0,
       xdr.ScVal.scvVoid(),
     );
@@ -322,7 +341,7 @@ describe("SorobanEventIndexer", () => {
     ).toEqual({
       type: "campaign_cancelled",
       payload_json: JSON.stringify({
-        topics: ["campaign_cancelled", 1, ORG],
+        topics: ["campaign_cancelled", 1],
         value: {},
       }),
     });

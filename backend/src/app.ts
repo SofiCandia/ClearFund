@@ -26,8 +26,9 @@ export interface BuildAppOptions {
     | "createCampaign"
     | "donate"
     | "submitEvidence"
-    | "approveMilestone"
-    | "claimRefund"
+    | "withdraw"
+    | "releaseMilestone"
+    | "reclaimBond"
     | "submitSignedXdr"
   >;
   storageProvider?: StorageProvider;
@@ -133,11 +134,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
                 title: "Campaign",
                 description_uri: "https://example.org/campaign",
                 milestones: [{ description: "Phase one", amount: "100000" }],
-                verifiers: [
-                  "GC3XAM7HEDTQVIPPZE3C7KBCBZYKR3XSTKWUUFDTZW55YNKDNOCWDCAH",
-                ],
-                threshold: 1,
-                deadline: "2000000000",
+                window_seconds: 259200,
+                deadline: "1800000000",
               },
             },
           },

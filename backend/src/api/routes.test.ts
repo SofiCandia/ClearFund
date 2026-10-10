@@ -10,7 +10,6 @@ const CONTRACT_ID = "CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI";
 const TOKEN_ID = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 const ORG = "GBZMF2I4QQCDVZY3R55F7667WQOBUALKBX6IPUMLAPNJCIU6KVLOPMHN";
 const DONOR = "GA5CSTXBHKQTMCV75UWPFHLABDXTZO3NPXGMFJNW33KCDFXSCMNZOEQY";
-const VERIFIER = "GC3XAM7HEDTQVIPPZE3C7KBCBZYKR3XSTKWUUFDTZW55YNKDNOCWDCAH";
 const RELEASE_HASH =
   "a4e4abb92f25d7e09f47e0d80a98a86d108a71c48e724f54cbbddac5223732cb";
 const evidenceFile = Buffer.from("%PDF-1.7\nClearFun evidence\n");
@@ -48,27 +47,28 @@ function makeDatabase(): IndexerDatabase {
   database.connection
     .prepare(
       `INSERT INTO campaigns (
-        id, org, token, title, description_uri, goal, deadline, threshold,
-        verifiers_json, total_raised, total_released, total_refunded, status,
-        updated_ledger
+        id, org, token, title, description_uri, goal, deadline, window_secs,
+        bond_amount, bond_state, total_raised, total_released, total_withdrawn,
+        held, total_shares, epoch, status, updated_ledger
       ) VALUES (1, ?, ?, 'ClearFun campaign', 'https://example.org/campaign',
-        '1000', 2000000000, 1, ?, '500', '100', '10', 'Active', 100)`,
+        '1000', 2000000000, 60, '10', 'Held', '500', '100', '10',
+        '390', '500', 0, 'Active', 100)`,
     )
-    .run(ORG, TOKEN_ID, JSON.stringify([VERIFIER]));
+    .run(ORG, TOKEN_ID);
   database.connection
     .prepare(
       `INSERT INTO milestones (
         campaign_id, milestone_index, description, amount, status,
-        evidence_hash, evidence_uri, approvals_json, updated_ledger
-      ) VALUES (1, 0, 'First milestone', '500', 'EvidenceSubmitted', ?, 
-        'https://api.clearfun.test/evidence', ?, 100)`,
+        evidence_hash, evidence_uri, window_end, released_amount, updated_ledger
+      ) VALUES (1, 0, 'First milestone', '500', 'EvidenceSubmitted', ?,
+        'https://api.clearfun.test/evidence', ?, '0', 100)`,
     )
-    .run(evidenceHash, JSON.stringify([VERIFIER]));
+    .run(evidenceHash, Math.floor(Date.now() / 1000) + 300);
   database.connection
     .prepare(
       `INSERT INTO donations (
-        campaign_id, donor, amount, refunded_amount, updated_ledger
-      ) VALUES (1, ?, '500', '10', 100)`,
+        campaign_id, donor, amount, shares, withdrawn, position_epoch, updated_ledger
+      ) VALUES (1, ?, '500', '500', '10', 0, 100)`,
     )
     .run(DONOR);
   const eventStatement = database.connection.prepare(
@@ -91,7 +91,10 @@ function makeDatabase(): IndexerDatabase {
     101,
     "2026-10-07T12:00:05.000Z",
     "donated",
-    JSON.stringify({ topics: ["donated", 1, DONOR], value: { amount: "500" } }),
+    JSON.stringify({
+      topics: ["donated", 1, DONOR],
+      value: { amount: "500", shares: "500" },
+    }),
     `https://stellar.expert/explorer/testnet/tx/${"2".repeat(64)}`,
   );
   eventStatement.run(
@@ -123,13 +126,15 @@ function makeApp(allowedOrigins = "") {
             goal: "1000",
             total_raised: "500",
             total_released: "100",
+            total_withdrawn: "10",
+            held: "390",
           },
         },
         isReadCall: true,
       };
     }
     if (method === "balance" && contractId === TOKEN_ID) {
-      return { result: { value: 390n }, isReadCall: true };
+      return { result: { value: 400n }, isReadCall: true };
     }
     throw new Error(`Unexpected RPC method ${method}`);
   });
@@ -140,8 +145,9 @@ function makeApp(allowedOrigins = "") {
     createCampaign: vi.fn(async () => "unsigned-create-xdr"),
     donate: vi.fn(async () => "unsigned-donate-xdr"),
     submitEvidence: vi.fn(async () => "unsigned-evidence-xdr"),
-    approveMilestone: vi.fn(async () => "unsigned-approval-xdr"),
-    claimRefund: vi.fn(async () => "unsigned-refund-xdr"),
+    withdraw: vi.fn(async () => "unsigned-withdraw-xdr"),
+    releaseMilestone: vi.fn(async () => "unsigned-release-xdr"),
+    reclaimBond: vi.fn(async () => "unsigned-bond-xdr"),
     submitSignedXdr: vi.fn(async () => ({
       hash: RELEASE_HASH,
       status: "SUCCESS",
@@ -152,8 +158,9 @@ function makeApp(allowedOrigins = "") {
     | "createCampaign"
     | "donate"
     | "submitEvidence"
-    | "approveMilestone"
-    | "claimRefund"
+    | "withdraw"
+    | "releaseMilestone"
+    | "reclaimBond"
     | "submitSignedXdr"
   >;
   const config = loadConfig({
@@ -231,14 +238,25 @@ describe("ClearFun REST API", () => {
     expect(campaigns.json().data).toHaveLength(1);
     expect(campaign.json()).toMatchObject({
       id: 1,
-      progress_percent: 50,
-      funds_held: "390",
-      milestones: [{ index: 0, status: "EvidenceSubmitted" }],
-      verifiers: [VERIFIER],
+      progress_percent: 49,
+      funded: "490",
+      held: "390",
+      bond_amount: "10",
+      milestones: [
+        {
+          index: 0,
+          status: "EvidenceSubmitted",
+          window_end: expect.any(Number),
+        },
+      ],
     });
     expect(donations.json().data[0]).toMatchObject({
       donor: DONOR,
       amount: "500",
+      shares: "500",
+      current_value: "390",
+      withdrawn: "10",
+      withdrawable: true,
     });
     expect(timeline.json().data).toHaveLength(3);
     expect(timeline.json().data[2]).toMatchObject({
@@ -268,18 +286,49 @@ describe("ClearFun REST API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       accounting: {
-        total_incoming: "500",
-        total_outgoing: "110",
-        expected_contract_balance: "390",
+        total_donated: "500",
+        total_released: "100",
+        total_withdrawn: "10",
+        held: "390",
       },
       on_chain: {
         total_raised: "500",
         total_released: "100",
-        contract_balance: "390",
+        total_withdrawn: "10",
+        held: "390",
       },
       consistent: true,
     });
-    expect(queryContract).toHaveBeenCalledTimes(2);
+    expect(queryContract).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks solvency per token across all new-contract campaigns", async () => {
+    const { app } = makeApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/audit/solvency",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      consistent: true,
+      tokens: [
+        {
+          token: TOKEN_ID,
+          contract_balance: "400",
+          expected_balance: "400",
+          campaign_count: 1,
+          campaigns: [
+            {
+              campaign_id: 1,
+              held: "390",
+              bond_amount: "10",
+              bond_state: "Held",
+            },
+          ],
+          consistent: true,
+        },
+      ],
+    });
   });
 
   it("validates query and path inputs with uniform error envelopes", async () => {
@@ -316,9 +365,8 @@ describe("ClearFun REST API", () => {
           title: "New campaign",
           description_uri: "https://example.org/new",
           milestones: [{ description: "Phase one", amount: "100" }],
-          verifiers: [VERIFIER],
-          threshold: 1,
-          deadline: "2000000000",
+          window_seconds: 60,
+          deadline: "1800000000",
         },
       ],
       [
@@ -334,16 +382,13 @@ describe("ClearFun REST API", () => {
           evidence_uri: "https://example.org/evidence",
         },
       ],
-      [
-        "/tx/approve-milestone",
-        {
-          source: VERIFIER,
-          verifier: VERIFIER,
-          campaign_id: 1,
-          milestone_index: 0,
-        },
-      ],
+      ["/tx/withdraw", { source: DONOR, donor: DONOR, campaign_id: 1 }],
       ["/tx/claim-refund", { source: DONOR, donor: DONOR, campaign_id: 1 }],
+      [
+        "/tx/release-milestone",
+        { source: ORG, campaign_id: 1, milestone_index: 0 },
+      ],
+      ["/tx/reclaim-bond", { campaign_id: 1 }],
     ] as const;
 
     for (const [url, body] of requests) {
@@ -352,6 +397,13 @@ describe("ClearFun REST API", () => {
       expect(response.json()).toMatchObject({ signed: false });
       expect(response.json().xdr).toContain("unsigned-");
     }
+    const removedApproval = await app.inject({
+      method: "POST",
+      url: "/tx/approve-milestone",
+      payload: {},
+    });
+    expect(removedApproval.statusCode).toBe(410);
+    expect(removedApproval.json().error.code).toBe("ENDPOINT_REMOVED");
     const submitted = await app.inject({
       method: "POST",
       url: "/tx/submit",
@@ -372,12 +424,11 @@ describe("ClearFun REST API", () => {
         source: ORG,
         org: ORG,
         token: TOKEN_ID,
-        title: "Invalid threshold",
+        title: "Invalid window",
         description_uri: "https://example.org/invalid",
         milestones: [{ description: "Phase one", amount: "100" }],
-        verifiers: [VERIFIER],
-        threshold: 2,
-        deadline: "2000000000",
+        window_seconds: 30,
+        deadline: "1800000000",
       },
     });
     expect(invalidCampaign.statusCode).toBe(400);

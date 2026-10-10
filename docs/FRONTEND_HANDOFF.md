@@ -1,90 +1,59 @@
-# Handoff de frontend para ClearFun
+# Handoff de frontend ClearFund
 
-El backend Fastify ya expone REST y OpenAPI. La especificación navegable está
-en `/docs` y el JSON se sirve en `/docs/openapi.json`; el archivo versionado es
-[`openapi.json`](./openapi.json). Construir el frontend queda fuera del alcance
-de este monorepo.
+La API Fastify expone `/docs` y `/docs/openapi.json`; el contrato nuevo no usa
+verificadores ni aprobaciones. Antes de invocar la API, confirmar que el
+backend está configurado con el `CONTRACT_ID` nuevo, no con
+`LEGACY_CONTRACT_ID`.
 
-## Pantallas sugeridas y endpoints
+## Endpoints y modelos
 
-| Pantalla                       | Endpoints y datos                                                                                                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Explorar campañas              | `GET /campaigns?status=&page=&limit=&search=`. Mostrar título, estado, progreso, recaudado y meta.                                                                                   |
-| Detalle de campaña             | `GET /campaigns/:id` para organización, token, verificadores, umbral, hitos, aprobaciones y fondos retenidos.                                                                        |
-| Timeline de campaña            | `GET /campaigns/:id/timeline?page=&limit=`; cada fila da `tx_hash` y `explorer_url`.                                                                                                 |
-| Donaciones de campaña          | `GET /campaigns/:id/donations?page=&limit=`. Mostrar montos como cadenas enteras; convertir/unidades solo con metadata precisa del token.                                            |
-| Crear campaña                  | Conectar wallet para `source`/`org`; seleccionar token, título, URI, hitos, verificadores, threshold y deadline; preparar con `POST /tx/create-campaign`.                            |
-| Panel de organización          | `GET /campaigns` y `GET /campaigns/:id`; enviar evidencia con `POST /evidence/upload`, y luego preparar `POST /tx/submit-evidence`. Refrescar timeline/detalle después de confirmar. |
-| Panel de verificador           | `GET /campaigns/:id` para evidencia y estado; preparar `POST /tx/approve-milestone` y firmar con la wallet del verificador.                                                          |
-| Vista de auditoría             | `GET /campaigns/:id/audit`, más `/campaigns/:id/timeline`; representar `consistent`, ingresos, egresos, saldo esperado y saldo on-chain.                                             |
-| Perfil/historial de donante    | `GET /donors/:address/donations`.                                                                                                                                                    |
-| Resumen global                 | `GET /stats`.                                                                                                                                                                        |
-| Estado y documentación técnica | `GET /health`, `/docs`, `/docs/openapi.json`.                                                                                                                                        |
+| Vista | Endpoint |
+| --- | --- |
+| Explorar campañas | `GET /campaigns?status=&page=&limit=&search=` |
+| Detalle y hitos | `GET /campaigns/:id` |
+| Posiciones de donantes | `GET /campaigns/:id/donations` |
+| Actividad ordenada | `GET /campaigns/:id/timeline` |
+| Historial de una wallet | `GET /donors/:address/donations` |
+| Auditoría de campaña | `GET /campaigns/:id/audit` |
+| Solvencia agregada por token | `GET /audit/solvency` |
+| Crear campaña | `POST /tx/create-campaign` |
+| Donar | `POST /tx/donate` |
+| Subir y registrar evidencia | `POST /evidence/upload`, `POST /tx/submit-evidence` |
+| Retirar la propia posición | `POST /tx/withdraw`; `/tx/claim-refund` es alias deprecado |
+| Liberar hito públicamente | `POST /tx/release-milestone` |
+| Recuperar garantía | `POST /tx/reclaim-bond` |
+| Enviar XDR firmado | `POST /tx/submit` |
 
-Todas las rutas comienzan en el origin de API configurado por ambiente. Leer
-`explorer_url` devuelto en vez de construir rutas específicas del entorno.
-El estado inicial del indexer puede tardar algunos segundos: una transacción
-confirmada no implica que la proyección SQLite ya haya actualizado el detalle.
+Los errores de API mantienen `{ error: { code, message } }`. Los montos son
+cadenas decimales de unidades base; no convertir `i128` a `Number`. Los
+eventos de timeline devuelven `tx_hash` y `explorer_url`.
 
-## Conectar wallet y firmar
+## Habilitación de botones
 
-1. Solicitar conexión a Freighter u otra wallet compatible. Tomar la dirección
-   pública y verificar que la wallet usa Stellar Testnet, igual a la red del
-   backend.
-2. Construir el payload validado de la operación; importes de contrato son
-   cadenas de enteros en unidades base. Para `source`, usar la dirección cuya
-   firma de transacción corresponde a la invocación y respetar la autorización
-   requerida: organización, donante o verificador.
-3. Solicitar el XDR al endpoint de preparación correspondiente:
-   `POST /tx/create-campaign`, `/tx/donate`, `/tx/submit-evidence`,
-   `/tx/approve-milestone` o `/tx/claim-refund`. Respuesta:
-   `{ "xdr": "...", "signed": false }`.
-4. Entregar ese XDR a la wallet para firmarlo. La wallet conserva la clave
-   privada y solicita consentimiento al usuario. Nunca enviar secretos al
-   backend.
-5. Enviar el envelope firmado al relayer:
-   `POST /tx/submit` con `{ "xdr": "<signed XDR>" }`.
-6. Mostrar el hash y usar el `explorer_url` de la respuesta. HTTP 200 significa
-   confirmación `SUCCESS`; HTTP 202 indica `PENDING`, no rechazo. Para estado
-   indexado, volver a consultar el endpoint de lectura correspondiente tras un
-   breve intervalo.
+Las reglas visuales no reemplazan la validación on-chain; las vistas pueden
+estar retrasadas por indexación.
 
-Ejemplo conceptual de relay:
+| Botón | Habilitar cuando |
+| --- | --- |
+| **Donar** | Campaña `Active`, hora actual anterior a `deadline`, wallet distinta de `org`, monto positivo y `max_donation >= monto`. El contrato valida de nuevo. |
+| **Retirar mi parte** | `current_value > 0` y `withdrawable=true` en `/donations`. `true` significa ventana pública abierta o expiración sin una liberación pendiente. |
+| **Subir evidencia** | Wallet conectada coincide con `org`; campaña `Active`; siguiente hito `Pending`; hitos anteriores `Released`; `held >= amount`; cabe la ventana completa antes del deadline. |
+| **Liberar etapa** | Hito `EvidenceSubmitted`, `now >= window_end`, `held > 0`; acción pública, sin wallet verificadora ni contador de votos. |
+| **Recuperar garantía** | Wallet coincide con `org`; deadline vencido; campaña no Completed; `total_shares == 0`; bond `Held`. El servidor prepara XDR mediante `/tx/reclaim-bond`. |
 
-```http
-POST /tx/submit
-Content-Type: application/json
+No mostrar acciones de aprobación, disputa o retiro global. Durante una ventana
+abierta cada donante decide si salir. Al finalizar, el silencio no significa
+rechazo: cualquiera puede ejecutar la liberación.
 
-{"xdr":"<XDR firmado localmente por Freighter>"}
-```
+## Firmas y evidencia
 
-La API solo permite una operación Soroban dirigida al contrato configurado y
-a uno de los métodos de escritura admitidos. La validación del envelope no
-sustituye la validación y autorización del contrato.
+1. Conectar Freighter u otra wallet compatible a Stellar Testnet.
+2. Solicitar XDR sin firmar en el endpoint correspondiente (`signed:false`).
+3. Firmar en la wallet y enviar el XDR firmado a `/tx/submit`. Nunca enviar
+   claves privadas al backend.
+4. Mostrar el hash y enlace de Stellar Expert recibido.
+5. Para evidencia, enviar PDF/PNG/JPEG (máximo 10 MiB) a
+   `/evidence/upload`, y luego su hash/URI con `POST /tx/submit-evidence`.
 
-## Evidencia
-
-- Subir `multipart/form-data` con campo `file` a `POST /evidence/upload`;
-  máximo 10 MiB y PDF/PNG/JPEG. Respuesta `{ hash, uri, content_type }`.
-- Entregar `hash` y `uri` a `POST /tx/submit-evidence` (el índice de hito es
-  base cero).
-- Usar `GET /evidence/:hash` para descargar y `/evidence/:hash/verify` para
-  recalcular SHA-256 y comprobar coincidencia con la evidencia indexada
-  on-chain.
-- El seed usa URI de ejemplo, no documentos probatorios reales. No presentar
-  evidencia de demo como comprobante de gastos.
-
-## UX y errores
-
-- Enviar y tratar errores uniformes `{ "error": { "code", "message" } }`.
-- Deshabilitar acciones incompatibles con los estados actuales, pero dejar que
-  el contrato valide de nuevo al simular/ejecutar. No asumir que la validación
-  del cliente es autoritativa.
-- Mostrar importes con la unidad y precisión del token. Los valores API se
-  conservan como cadenas para no perder precisión.
-- Mostrar estados `Active`, `Completed`, `Expired`, `Cancelled` y de hito
-  `Pending`, `EvidenceSubmitted`, `Released`.
-- Para una campaña `Expired`, explicar que el reembolso se solicita por wallet
-  con `POST /tx/claim-refund`, y actualizar el historial después de confirmar.
-- Respetar rate limits y paginación. La API no pretende ser un stream en
-  tiempo real; refrescar o hacer polling prudente.
+El endpoint `/tx/approve-milestone` se conserva únicamente como respuesta 410
+`ENDPOINT_REMOVED`. No usarlo en el frontend.

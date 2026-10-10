@@ -94,8 +94,12 @@ const createCampaignSchema = z
       )
       .min(1)
       .max(32),
-    verifiers: z.array(addressSchema).min(1).max(32),
-    threshold: z.number().int().positive().max(32),
+    window_seconds: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(2_592_000)
+      .default(259_200),
     deadline: z
       .string()
       .regex(/^[1-9]\d{0,19}$/)
@@ -122,25 +126,14 @@ const createCampaignSchema = z
         message: "source must match the organization wallet.",
       });
     }
-    if (input.threshold > input.verifiers.length) {
+    if (
+      BigInt(input.deadline) >
+      BigInt(Math.floor(Date.now() / 1000) + 365 * 86_400)
+    ) {
       context.addIssue({
         code: "custom",
-        path: ["threshold"],
-        message: "threshold cannot exceed the verifier count.",
-      });
-    }
-    if (new Set(input.verifiers).size !== input.verifiers.length) {
-      context.addIssue({
-        code: "custom",
-        path: ["verifiers"],
-        message: "Verifier addresses must be unique.",
-      });
-    }
-    if (input.verifiers.includes(input.org)) {
-      context.addIssue({
-        code: "custom",
-        path: ["verifiers"],
-        message: "The organization cannot be a verifier.",
+        path: ["deadline"],
+        message: "deadline cannot be more than 365 days in the future.",
       });
     }
     const goal = input.milestones.reduce(
@@ -173,18 +166,7 @@ const submitEvidenceSchema = z.object({
   evidence_hash: z.string().regex(/^[a-f0-9]{64}$/),
   evidence_uri: z.string().url().max(2048),
 });
-const approveMilestoneSchema = z
-  .object({
-    source: addressSchema,
-    verifier: addressSchema,
-    campaign_id: positiveIdSchema,
-    milestone_index: z.number().int().nonnegative().max(31),
-  })
-  .refine((input) => input.source === input.verifier, {
-    path: ["source"],
-    message: "source must match the verifier wallet.",
-  });
-const claimRefundSchema = z
+const withdrawSchema = z
   .object({
     source: addressSchema,
     donor: addressSchema,
@@ -194,6 +176,12 @@ const claimRefundSchema = z
     path: ["source"],
     message: "source must match the donor wallet.",
   });
+const releaseMilestoneSchema = z.object({
+  source: addressSchema,
+  campaign_id: positiveIdSchema,
+  milestone_index: z.number().int().nonnegative().max(31),
+});
+const reclaimBondSchema = z.object({ campaign_id: positiveIdSchema });
 const submitTransactionSchema = z.object({
   xdr: z.string().min(1).max(100_000),
 });
@@ -206,11 +194,15 @@ interface CampaignRow {
   description_uri: string;
   goal: string;
   deadline: number;
-  threshold: number;
-  verifiers_json: string;
+  window_secs: number;
+  bond_amount: string;
+  bond_state: string;
   total_raised: string;
   total_released: string;
-  total_refunded: string;
+  total_withdrawn: string;
+  held: string;
+  total_shares: string;
+  epoch: number;
   status: string;
   updated_ledger: number;
 }
@@ -223,7 +215,8 @@ interface MilestoneRow {
   status: string;
   evidence_hash: string;
   evidence_uri: string;
-  approvals_json: string;
+  window_end: number;
+  released_amount: string;
   updated_ledger: number;
 }
 
@@ -231,7 +224,9 @@ interface DonationRow {
   campaign_id: number;
   donor: string;
   amount: string;
-  refunded_amount: string;
+  shares: string;
+  withdrawn: string;
+  position_epoch: number;
   updated_ledger: number;
 }
 
@@ -253,8 +248,9 @@ interface ApiDependencies {
     | "createCampaign"
     | "donate"
     | "submitEvidence"
-    | "approveMilestone"
-    | "claimRefund"
+    | "withdraw"
+    | "releaseMilestone"
+    | "reclaimBond"
     | "submitSignedXdr"
   >;
   storageProvider: StorageProvider;
@@ -267,6 +263,8 @@ interface OnChainCampaign {
   goal: string | bigint;
   total_raised: string | bigint;
   total_released: string | bigint;
+  total_withdrawn: string | bigint;
+  held: string | bigint;
 }
 
 interface ErrorResponse {
@@ -348,13 +346,89 @@ function campaignMilestones(
 
 function campaignProgress(campaign: CampaignRow) {
   const goal = amount(campaign.goal);
-  const raised = amount(campaign.total_raised);
-  const released = amount(campaign.total_released);
-  const refunded = amount(campaign.total_refunded);
+  const funded = amount(campaign.held) + amount(campaign.total_released);
   return {
-    progress_percent: goal === 0n ? 0 : Number((raised * 10_000n) / goal) / 100,
-    funds_held: (raised - released - refunded).toString(),
+    funded: funded.toString(),
+    progress_percent: goal === 0n ? 0 : Number((funded * 10_000n) / goal) / 100,
+    max_donation: (goal > funded ? goal - funded : 0n).toString(),
   };
+}
+
+async function positionFor(
+  dependencies: ApiDependencies,
+  campaign: CampaignRow,
+  donor: string,
+  positionEpoch: number,
+  shares: string,
+  withdrawn: string,
+): Promise<{ shares: string; value: string; withdrawn: string }> {
+  let currentShares = shares;
+  let currentWithdrawn = withdrawn;
+  if (positionEpoch !== campaign.epoch) {
+    const response = await dependencies.rpcServer.queryContract<unknown>(
+      requireContractId(dependencies.contractId),
+      "get_position",
+      { campaign_id: campaign.id, donor },
+      dependencies.networkPassphrase,
+    );
+    const view = unwrapRpcValue<Record<string, unknown>>(
+      response.result,
+      "position",
+    );
+    currentShares = toBigInt(view.shares, "position shares").toString();
+    currentWithdrawn = toBigInt(
+      view.withdrawn,
+      "position withdrawn",
+    ).toString();
+  }
+  const value =
+    BigInt(campaign.total_shares) === 0n
+      ? 0n
+      : (BigInt(currentShares) * BigInt(campaign.held)) /
+        BigInt(campaign.total_shares);
+  return {
+    shares: currentShares,
+    value: value.toString(),
+    withdrawn: currentWithdrawn,
+  };
+}
+
+function isWithdrawable(
+  campaign: CampaignRow,
+  milestones: MilestoneRow[],
+  now: number,
+): boolean {
+  const windowOpen = milestones.some(
+    (milestone) =>
+      milestone.status === "EvidenceSubmitted" && now < milestone.window_end,
+  );
+  if (windowOpen) return true;
+  const releasePending = milestones.some(
+    (milestone) =>
+      milestone.status === "EvidenceSubmitted" && now >= milestone.window_end,
+  );
+  return (
+    now > campaign.deadline &&
+    campaign.status !== "Completed" &&
+    !releasePending
+  );
+}
+
+function toBigInt(value: unknown, label: string): bigint {
+  try {
+    if (
+      typeof value !== "string" &&
+      typeof value !== "number" &&
+      typeof value !== "bigint"
+    ) {
+      throw new TypeError();
+    }
+    return BigInt(value);
+  } catch (error) {
+    throw new Error(`Soroban RPC returned an invalid ${label} value.`, {
+      cause: error,
+    });
+  }
 }
 
 function serializeCampaign(campaign: CampaignRow) {
@@ -366,11 +440,13 @@ function serializeCampaign(campaign: CampaignRow) {
     description_uri: campaign.description_uri,
     goal: campaign.goal,
     deadline: campaign.deadline,
-    threshold: campaign.threshold,
-    verifiers: JSON.parse(campaign.verifiers_json) as string[],
+    window_secs: campaign.window_secs,
+    bond_amount: campaign.bond_amount,
+    bond_state: campaign.bond_state,
     total_raised: campaign.total_raised,
     total_released: campaign.total_released,
-    total_refunded: campaign.total_refunded,
+    total_withdrawn: campaign.total_withdrawn,
+    held: campaign.held,
     status: campaign.status,
     ...campaignProgress(campaign),
   };
@@ -523,14 +599,17 @@ export function registerApiRoutes(
       "description_uri",
       "goal",
       "deadline",
-      "threshold",
-      "verifiers",
+      "window_secs",
+      "bond_amount",
+      "bond_state",
       "total_raised",
       "total_released",
-      "total_refunded",
+      "total_withdrawn",
+      "held",
       "status",
       "progress_percent",
-      "funds_held",
+      "funded",
+      "max_donation",
     ],
     properties: {
       id: { type: "integer", minimum: 1 },
@@ -540,17 +619,20 @@ export function registerApiRoutes(
       description_uri: { type: "string", format: "uri" },
       goal: stringIntegerSchema,
       deadline: { type: "integer", description: "Unix timestamp in seconds." },
-      threshold: { type: "integer", minimum: 1 },
-      verifiers: { type: "array", items: { type: "string" } },
+      window_secs: { type: "integer", minimum: 60, maximum: 2_592_000 },
+      bond_amount: stringIntegerSchema,
+      bond_state: { type: "string", enum: ["Held", "Returned", "Slashed"] },
       total_raised: stringIntegerSchema,
       total_released: stringIntegerSchema,
-      total_refunded: stringIntegerSchema,
+      total_withdrawn: stringIntegerSchema,
+      held: stringIntegerSchema,
       status: {
         type: "string",
         enum: ["Active", "Completed", "Expired", "Cancelled"],
       },
       progress_percent: { type: "number", minimum: 0 },
-      funds_held: stringIntegerSchema,
+      funded: stringIntegerSchema,
+      max_donation: stringIntegerSchema,
     },
   };
   const pageResponseSchema = (items: Record<string, unknown>) => ({
@@ -576,14 +658,20 @@ export function registerApiRoutes(
       "campaign_id",
       "donor",
       "amount",
-      "refunded_amount",
+      "shares",
+      "current_value",
+      "withdrawn",
+      "withdrawable",
       "updated_ledger",
     ],
     properties: {
       campaign_id: { type: "integer" },
       donor: { type: "string" },
       amount: stringIntegerSchema,
-      refunded_amount: stringIntegerSchema,
+      shares: stringIntegerSchema,
+      current_value: stringIntegerSchema,
+      withdrawn: stringIntegerSchema,
+      withdrawable: { type: "boolean" },
       updated_ledger: { type: "integer" },
       title: { type: "string" },
       status: { type: "string" },
@@ -724,7 +812,7 @@ export function registerApiRoutes(
     {
       schema: {
         tags: ["Campaigns"],
-        summary: "Get a campaign, milestones, verifiers, and escrow progress",
+        summary: "Get campaign details, milestones, and held-fund progress",
         params: registerOpenApiSchema(campaignParamsSchema),
         response: withErrors({
           200: {
@@ -744,7 +832,8 @@ export function registerApiRoutes(
                         "status",
                         "evidence_hash",
                         "evidence_uri",
-                        "approvals",
+                        "window_end",
+                        "released_amount",
                       ],
                       properties: {
                         index: { type: "integer", minimum: 0 },
@@ -756,7 +845,8 @@ export function registerApiRoutes(
                         },
                         evidence_hash: { type: "string" },
                         evidence_uri: { type: "string" },
-                        approvals: { type: "array", items: { type: "string" } },
+                        window_end: { type: "integer" },
+                        released_amount: stringIntegerSchema,
                       },
                     },
                   },
@@ -779,7 +869,8 @@ export function registerApiRoutes(
           status: milestone.status,
           evidence_hash: milestone.evidence_hash,
           evidence_uri: milestone.evidence_uri,
-          approvals: JSON.parse(milestone.approvals_json) as string[],
+          window_end: milestone.window_end,
+          released_amount: milestone.released_amount,
         })),
       };
     },
@@ -790,7 +881,7 @@ export function registerApiRoutes(
     {
       schema: {
         tags: ["Campaigns"],
-        summary: "List donors and donation amounts for a campaign",
+        summary: "List donor positions and current withdrawable amounts",
         params: registerOpenApiSchema(campaignParamsSchema),
         querystring: donationsQueryJsonSchema,
         response: withErrors({
@@ -800,7 +891,7 @@ export function registerApiRoutes(
     },
     async (request) => {
       const { id } = validateParams(campaignParamsSchema, request.params);
-      campaignOrNotFound(dependencies, id);
+      const campaign = campaignOrNotFound(dependencies, id);
       const query = validateQuery(donationsQuerySchema, request.query);
       const totalRow = dependencies.database.connection
         .prepare(
@@ -809,11 +900,39 @@ export function registerApiRoutes(
         .get(id) as { total: number };
       const rows = dependencies.database.connection
         .prepare(
-          `SELECT campaign_id, donor, amount, refunded_amount, updated_ledger
+          `SELECT campaign_id, donor, amount, shares, withdrawn, position_epoch, updated_ledger
            FROM donations WHERE campaign_id = ? ORDER BY amount DESC LIMIT ? OFFSET ?`,
         )
         .all(id, query.limit, (query.page - 1) * query.limit) as DonationRow[];
-      return pageResult(rows, query.page, query.limit, totalRow.total);
+      const milestones = campaignMilestones(dependencies, id);
+      const mayWithdraw = isWithdrawable(
+        campaign,
+        milestones,
+        Math.floor(Date.now() / 1000),
+      );
+      const data = await Promise.all(
+        rows.map(async (row) => {
+          const position = await positionFor(
+            dependencies,
+            campaign,
+            row.donor,
+            row.position_epoch,
+            row.shares,
+            row.withdrawn,
+          );
+          return {
+            campaign_id: row.campaign_id,
+            donor: row.donor,
+            amount: row.amount,
+            shares: position.shares,
+            current_value: position.value,
+            withdrawn: position.withdrawn,
+            withdrawable: mayWithdraw && BigInt(position.value) > 0n,
+            updated_ledger: row.updated_ledger,
+          };
+        }),
+      );
+      return pageResult(data, query.page, query.limit, totalRow.total);
     },
   );
 
@@ -879,7 +998,7 @@ export function registerApiRoutes(
       schema: {
         tags: ["Audit"],
         summary:
-          "Compare indexed accounting with live contract and token state",
+          "Compare one campaign's indexed totals with its on-chain getters",
         params: registerOpenApiSchema(campaignParamsSchema),
         response: withErrors({
           200: {
@@ -896,11 +1015,10 @@ export function registerApiRoutes(
               accounting: {
                 type: "object",
                 properties: {
-                  total_incoming: stringIntegerSchema,
+                  total_donated: stringIntegerSchema,
                   total_released: stringIntegerSchema,
-                  total_refunded: stringIntegerSchema,
-                  total_outgoing: stringIntegerSchema,
-                  expected_contract_balance: stringIntegerSchema,
+                  total_withdrawn: stringIntegerSchema,
+                  held: stringIntegerSchema,
                 },
               },
               on_chain: {
@@ -908,7 +1026,8 @@ export function registerApiRoutes(
                 properties: {
                   total_raised: stringIntegerSchema,
                   total_released: stringIntegerSchema,
-                  contract_balance: stringIntegerSchema,
+                  total_withdrawn: stringIntegerSchema,
+                  held: stringIntegerSchema,
                 },
               },
               consistent: { type: "boolean" },
@@ -929,48 +1048,156 @@ export function registerApiRoutes(
       const donations = dependencies.database.connection
         .prepare("SELECT amount FROM donations WHERE campaign_id = ?")
         .all(id) as Array<{ amount: string }>;
-      const totalIncoming = donations
+      const totalDonated = donations
         .reduce((sum, donation) => sum + amount(donation.amount), 0n)
         .toString();
-      const totalOutgoing = (
-        amount(campaign.total_released) + amount(campaign.total_refunded)
-      ).toString();
-      const expectedBalance = (
-        amount(totalIncoming) - amount(totalOutgoing)
-      ).toString();
-      const balanceResponse =
-        await dependencies.rpcServer.queryContract<unknown>(
-          chainCampaign.token,
-          "balance",
-          { id: requireContractId(dependencies.contractId) },
-          dependencies.networkPassphrase,
-        );
-      const onChainBalance = amount(
-        unwrapRpcValue<string | bigint>(
-          balanceResponse.result,
-          "token balance",
-        ),
-      ).toString();
       const consistent =
-        totalIncoming === campaign.total_raised &&
+        totalDonated === campaign.total_raised &&
         chainCampaign.total_raised.toString() === campaign.total_raised &&
         chainCampaign.total_released.toString() === campaign.total_released &&
-        expectedBalance === onChainBalance;
+        chainCampaign.total_withdrawn.toString() === campaign.total_withdrawn &&
+        chainCampaign.held.toString() === campaign.held;
       return {
         campaign_id: id,
         accounting: {
-          total_incoming: totalIncoming,
+          total_donated: totalDonated,
           total_released: campaign.total_released,
-          total_refunded: campaign.total_refunded,
-          total_outgoing: totalOutgoing,
-          expected_contract_balance: expectedBalance,
+          total_withdrawn: campaign.total_withdrawn,
+          held: campaign.held,
         },
         on_chain: {
           total_raised: chainCampaign.total_raised.toString(),
           total_released: chainCampaign.total_released.toString(),
-          contract_balance: onChainBalance,
+          total_withdrawn: chainCampaign.total_withdrawn.toString(),
+          held: chainCampaign.held.toString(),
         },
         consistent,
+        verified_at: new Date().toISOString(),
+      };
+    },
+  );
+
+  app.get(
+    "/audit/solvency",
+    {
+      schema: {
+        tags: ["Audit"],
+        summary:
+          "Compare each token contract balance with all campaign-held funds and bonds",
+        response: withErrors({
+          200: {
+            type: "object",
+            required: ["tokens", "consistent", "verified_at"],
+            properties: {
+              tokens: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: [
+                    "token",
+                    "contract_balance",
+                    "expected_balance",
+                    "campaign_count",
+                    "campaigns",
+                    "consistent",
+                  ],
+                  properties: {
+                    token: { type: "string" },
+                    contract_balance: stringIntegerSchema,
+                    expected_balance: stringIntegerSchema,
+                    campaign_count: { type: "integer", minimum: 0 },
+                    campaigns: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: [
+                          "campaign_id",
+                          "held",
+                          "bond_amount",
+                          "bond_state",
+                        ],
+                        properties: {
+                          campaign_id: { type: "integer", minimum: 1 },
+                          held: stringIntegerSchema,
+                          bond_amount: stringIntegerSchema,
+                          bond_state: {
+                            type: "string",
+                            enum: ["Held", "Returned", "Slashed"],
+                          },
+                        },
+                      },
+                    },
+                    consistent: { type: "boolean" },
+                  },
+                },
+              },
+              consistent: { type: "boolean" },
+              verified_at: { type: "string", format: "date-time" },
+            },
+          },
+        }),
+      },
+    },
+    async () => {
+      const contractId = requireContractId(dependencies.contractId);
+      const tokens = dependencies.database.connection
+        .prepare("SELECT DISTINCT token FROM campaigns ORDER BY token")
+        .all() as Array<{ token: string }>;
+      const details = await Promise.all(
+        tokens.map(async ({ token }) => {
+          const campaigns = dependencies.database.connection
+            .prepare(
+              `SELECT id, held, bond_amount, bond_state FROM campaigns WHERE token = ?`,
+            )
+            .all(token) as Array<{
+            id: number;
+            held: string;
+            bond_amount: string;
+            bond_state: string;
+          }>;
+          const expected = campaigns
+            .reduce(
+              (sum, campaign) =>
+                sum +
+                amount(campaign.held) +
+                (campaign.bond_state === "Held"
+                  ? amount(campaign.bond_amount)
+                  : 0n),
+              0n,
+            )
+            .toString();
+          const balanceResponse =
+            await dependencies.rpcServer.queryContract<unknown>(
+              token,
+              "balance",
+              { id: contractId },
+              dependencies.networkPassphrase,
+            );
+          const balance = amount(
+            unwrapRpcValue<string | bigint>(
+              balanceResponse.result,
+              "token balance",
+            ),
+          ).toString();
+          return {
+            token,
+            contract_balance: balance,
+            expected_balance: expected,
+            campaign_count: campaigns.length,
+            campaigns: campaigns.map((campaign) => ({
+              campaign_id: campaign.id,
+              held: campaign.held,
+              bond_amount:
+                campaign.bond_state === "Held" ? campaign.bond_amount : "0",
+              bond_state: campaign.bond_state,
+            })),
+            consistent: balance === expected,
+          };
+        }),
+      );
+      return {
+        tokens: details,
+        consistent: details.every((detail) => detail.consistent),
         verified_at: new Date().toISOString(),
       };
     },
@@ -997,13 +1224,68 @@ export function registerApiRoutes(
         .get(address) as { total: number };
       const rows = dependencies.database.connection
         .prepare(
-          `SELECT d.campaign_id, d.donor, d.amount, d.refunded_amount,
-                  d.updated_ledger, c.title, c.status
+          `SELECT d.campaign_id, d.donor, d.amount, d.shares, d.withdrawn,
+                  d.position_epoch, d.updated_ledger, c.title, c.status,
+                  c.held, c.total_shares, c.epoch, c.deadline, c.bond_amount,
+                  c.bond_state, c.total_released, c.total_raised, c.org,
+                  c.token, c.description_uri, c.goal, c.window_secs,
+                  c.total_withdrawn, c.updated_ledger AS campaign_updated_ledger
            FROM donations d JOIN campaigns c ON c.id = d.campaign_id
            WHERE d.donor = ? ORDER BY d.updated_ledger DESC LIMIT ? OFFSET ?`,
         )
-        .all(address, query.limit, (query.page - 1) * query.limit);
-      return pageResult(rows, query.page, query.limit, totalRow.total);
+        .all(address, query.limit, (query.page - 1) * query.limit) as Array<
+        DonationRow & {
+          title: string;
+          status: string;
+          held: string;
+          total_shares: string;
+          epoch: number;
+          deadline: number;
+          bond_amount: string;
+          bond_state: string;
+          total_released: string;
+          total_raised: string;
+          org: string;
+          token: string;
+          description_uri: string;
+          goal: string;
+          window_secs: number;
+          total_withdrawn: string;
+          campaign_updated_ledger: number;
+        }
+      >;
+      const now = Math.floor(Date.now() / 1000);
+      const data = await Promise.all(
+        rows.map(async (row) => {
+          const campaign = campaignOrNotFound(dependencies, row.campaign_id);
+          const position = await positionFor(
+            dependencies,
+            campaign,
+            row.donor,
+            row.position_epoch,
+            row.shares,
+            row.withdrawn,
+          );
+          return {
+            campaign_id: row.campaign_id,
+            donor: row.donor,
+            amount: row.amount,
+            shares: position.shares,
+            current_value: position.value,
+            withdrawn: position.withdrawn,
+            withdrawable:
+              isWithdrawable(
+                campaign,
+                campaignMilestones(dependencies, row.campaign_id),
+                now,
+              ) && BigInt(position.value) > 0n,
+            updated_ledger: row.updated_ledger,
+            title: row.title,
+            status: row.status,
+          };
+        }),
+      );
+      return pageResult(data, query.page, query.limit, totalRow.total);
     },
   );
 
@@ -1065,12 +1347,16 @@ export function registerApiRoutes(
         response: withErrors({ 200: txResponseSchema }),
       },
     },
-    async (request) => ({
-      xdr: await dependencies.transactionService.createCampaign(
-        validateBody(createCampaignSchema, request.body),
-      ),
-      signed: false,
-    }),
+    async (request) => {
+      const input = validateBody(createCampaignSchema, request.body);
+      return {
+        xdr: await dependencies.transactionService.createCampaign({
+          ...input,
+          window_secs: input.window_seconds,
+        }),
+        signed: false,
+      };
+    },
   );
 
   app.post(
@@ -1115,15 +1401,40 @@ export function registerApiRoutes(
     {
       schema: {
         tags: ["Transactions"],
+        summary: "Removed: milestones no longer require third-party approvals",
+        response: withErrors({
+          410: {
+            ...errorSchema,
+            description: "This approval workflow has been removed.",
+          },
+        }),
+      },
+    },
+    async (_request, reply) =>
+      reply
+        .code(410)
+        .send(
+          asErrorResponse(
+            "ENDPOINT_REMOVED",
+            "Las aprobaciones de verificadores fueron eliminadas; use la salida individual del donante y la liberación pública.",
+          ),
+        ),
+  );
+
+  app.post(
+    "/tx/withdraw",
+    {
+      schema: {
+        tags: ["Transactions"],
         summary:
-          "Assemble a simulated, unsigned milestone approval transaction",
-        body: registerOpenApiSchema(approveMilestoneSchema),
+          "Assemble an unsigned transaction to withdraw the donor position",
+        body: registerOpenApiSchema(withdrawSchema),
         response: withErrors({ 200: txResponseSchema }),
       },
     },
     async (request) => ({
-      xdr: await dependencies.transactionService.approveMilestone(
-        validateBody(approveMilestoneSchema, request.body),
+      xdr: await dependencies.transactionService.withdraw(
+        validateBody(withdrawSchema, request.body),
       ),
       signed: false,
     }),
@@ -1134,14 +1445,51 @@ export function registerApiRoutes(
     {
       schema: {
         tags: ["Transactions"],
-        summary: "Assemble a simulated, unsigned donation refund transaction",
-        body: registerOpenApiSchema(claimRefundSchema),
+        summary: "Deprecated alias for /tx/withdraw",
+        deprecated: true,
+        body: registerOpenApiSchema(withdrawSchema),
         response: withErrors({ 200: txResponseSchema }),
       },
     },
     async (request) => ({
-      xdr: await dependencies.transactionService.claimRefund(
-        validateBody(claimRefundSchema, request.body),
+      xdr: await dependencies.transactionService.withdraw(
+        validateBody(withdrawSchema, request.body),
+      ),
+      signed: false,
+    }),
+  );
+
+  app.post(
+    "/tx/release-milestone",
+    {
+      schema: {
+        tags: ["Transactions"],
+        summary: "Assemble a public milestone release transaction",
+        body: registerOpenApiSchema(releaseMilestoneSchema),
+        response: withErrors({ 200: txResponseSchema }),
+      },
+    },
+    async (request) => ({
+      xdr: await dependencies.transactionService.releaseMilestone(
+        validateBody(releaseMilestoneSchema, request.body),
+      ),
+      signed: false,
+    }),
+  );
+
+  app.post(
+    "/tx/reclaim-bond",
+    {
+      schema: {
+        tags: ["Transactions"],
+        summary: "Assemble an unsigned creator bond reclamation transaction",
+        body: registerOpenApiSchema(reclaimBondSchema),
+        response: withErrors({ 200: txResponseSchema }),
+      },
+    },
+    async (request) => ({
+      xdr: await dependencies.transactionService.reclaimBond(
+        validateBody(reclaimBondSchema, request.body),
       ),
       signed: false,
     }),

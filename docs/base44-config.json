@@ -1,949 +1,268 @@
 {
-  "project": "ClearFun",
-  "package_version": "1.0.0",
-  "generated_at": "2026-10-07",
-  "status": "testnet_demo",
+  "project": "ClearFund",
+  "package_version": "2.0.0",
+  "status": "contract_deployment_pending",
   "network": {
     "name": "testnet",
     "network_passphrase": "Test SDF Network ; September 2015",
     "soroban_rpc_url": "https://soroban-testnet.stellar.org",
     "horizon_url": "https://horizon-testnet.stellar.org",
-    "contract_id": "CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI",
-    "contract_url": "https://stellar.expert/explorer/testnet/contract/CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI",
-    "deploy": {
-      "transaction_hash": "12d997f0981a847dc45cedc563df7119303b0dc394399692572f401d0eeb2ad8",
-      "transaction_url": "https://stellar.expert/explorer/testnet/tx/12d997f0981a847dc45cedc563df7119303b0dc394399692572f401d0eeb2ad8",
-      "created_at_utc": "2026-10-07T20:14:32Z",
-      "ledger": 5076097,
-      "verified_successful": true
-    },
+    "contract_id": null,
+    "contract_id_status": "PENDIENTE: el deploy nuevo requiere una cuenta deployer financiada.",
+    "legacy_contract_id": "CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI",
     "tokens": {
       "XLM": {
         "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
         "asset_code": "native",
-        "issuer": null,
-        "name": "native",
-        "symbol": "native",
         "decimals": 7,
-        "verified_by": "Soroban RPC Testnet"
+        "verified_on_testnet": true
       },
       "USDC_TEST": {
         "contract_id": null,
-        "asset_code": null,
-        "issuer": null,
-        "decimals": null,
-        "status": "PENDIENTE: TOKEN_USDC_ID y USDC_ISSUER_ADDRESS están vacíos; no hay SAC USDC de prueba desplegado."
+        "status": "No hay un SAC USDC de prueba configurado."
       }
     },
-    "amount_conversion": {
-      "base_unit": "i128 integer string",
-      "XLM_decimals": 7,
-      "formula": "units = whole * 10^decimals + fractional_digits padded right to decimals",
-      "example_display": "1.25",
-      "example_base_units": "12500000",
-      "javascript": "function toBaseUnits(value, decimals=7){const m=/^(0|[1-9]\\d*)(?:\\.(\\d+))?$/.exec(String(value));if(!m||(m[2]?.length??0)>decimals)throw new Error('Invalid decimal amount');const [w,f='']=String(value).split('.');return BigInt(w)*10n**BigInt(decimals)+BigInt((f+'0'.repeat(decimals)).slice(0,decimals)||'0')} function fromBaseUnits(value,decimals=7){const n=BigInt(value),scale=10n**BigInt(decimals),w=n/scale,f=(n%scale).toString().padStart(decimals,'0').replace(/0+$/,'');return f?w+'.'+f:w.toString()}"
+    "initialization": {
+      "bond_bps": 1000,
+      "initializer_requires_auth": true,
+      "administrator_after_initialization": false
+    },
+    "amounts": {
+      "api_type": "string integer in token base units",
+      "never_convert_i128_to_number": true,
+      "xlm_decimals": 7
     }
   },
   "backend": {
     "api_base_url": null,
-    "status": "PENDIENTE: no existe hostname público desplegado; Render Blueprint aún debe conectarse y desplegarse.",
-    "public_health_url": null,
-    "swagger_url": null,
+    "status": "PENDIENTE: hostname HTTPS real del backend.",
     "openapi_file": "docs/openapi.json",
+    "database_url": "./data/clearfun-v2.db",
+    "indexer_contract_filter": "CONTRACT_ID",
+    "legacy_campaigns_mixed": false,
     "cors": {
       "environment_variable": "ALLOWED_ORIGINS",
-      "production_value": null,
-      "production_value_status": "PENDIENTE: copiar los origins HTTPS reales de Base44, producción y preview/editor, separados por coma.",
-      "development_wildcard": "*",
-      "wildcard_supported": true,
-      "warning": "Temporal únicamente: refleja cualquier Origin y el backend habilita credentials=true. No usar en producción.",
-      "allow_credentials": true
-    },
-    "rate_limit": {
-      "requests": 100,
-      "window_ms": 60000,
-      "upload_max_bytes": 10485760
-    },
-    "render_environment": {
-      "STELLAR_NETWORK": "testnet",
-      "SOROBAN_RPC_URL": "https://soroban-testnet.stellar.org",
-      "HORIZON_URL": "https://horizon-testnet.stellar.org",
-      "NETWORK_PASSPHRASE": "Test SDF Network ; September 2015",
-      "CONTRACT_ID": "CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI",
-      "PORT": "10000",
-      "DATABASE_URL": "/app/data/app.db",
-      "EVIDENCE_STORAGE_DIR": "/app/data/evidence",
-      "ALLOWED_ORIGINS": "PENDIENTE: origins exactos Base44",
-      "RATE_LIMIT_MAX": "100",
-      "RATE_LIMIT_WINDOW_MS": "60000",
-      "INDEXER_POLL_INTERVAL_MS": "5000",
-      "INDEXER_START_LEDGER": "0",
-      "ADMIN_API_KEY": "No requerido por endpoints actuales; secreto opcional si se configura.",
-      "DEPLOYER_SECRET": "No configurar; secreto de despliegue no requerido por runtime.",
-      "SMOKE_SECRETS": "No configurar ni compartir con Base44."
-    },
-    "deployment_steps": [
-      "Subir el monorepo a Git remoto accesible por Render, sin .env.",
-      "Crear New + > Blueprint y conectar el repositorio; Render lee render.yaml.",
-      "Configurar CONTRACT_ID y esperar deploy/healthcheck.",
-      "Copiar el hostname HTTPS real asignado al campo API_BASE_URL de Base44.",
-      "Configurar ALLOWED_ORIGINS con origins exactos de producción y preview/editor; guardar y redeploy.",
-      "Verificar curl -i https://<hostname-real>/health y /docs/openapi.json."
-    ]
+      "production_origins": null,
+      "wildcard_allowed_in_production": false
+    }
   },
   "api": {
     "openapi_version": "0.4.0",
-    "path_count": 17,
-    "base_url": "API_BASE_URL pendiente; usar el hostname HTTPS real asignado por Render.",
+    "runtime_response_samples": "Vitest route injection/local fixtures; no public backend or new on-chain data verified yet.",
     "pagination": {
-      "page": "optional integer, default 1, minimum 1",
-      "limit": "optional integer, default 20, range 1..100"
+      "page": 1,
+      "limit_default": 20,
+      "limit_min": 1,
+      "limit_max": 100
+    },
+    "standard_error": {
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "Validation details."
+      }
     },
     "endpoints": [
       {
         "method": "GET",
         "path": "/health",
-        "parameters": [],
-        "request_example": "curl -i \"$API_BASE_URL/health\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "status": "ok"
-          }
-        }
+        "status": 200,
+        "response": { "status": "ok" }
       },
       {
         "method": "GET",
         "path": "/campaigns",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "type": "enum: Active|Completed|Expired|Cancelled"
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "type": "integer",
-            "default": 1
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "type": "integer 1..100",
-            "default": 20
-          },
-          {
-            "in": "query",
-            "name": "search",
-            "required": false,
-            "type": "string max 200"
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/campaigns?status=Active&page=1&limit=20&search=agua\"",
-        "observed_response": {
-          "status": 200,
-          "campaign_ids": [4, 3, 2, 1],
-          "pagination": { "page": 1, "limit": 20, "total": 4, "pages": 1 }
-        }
+        "query": ["status?", "page?", "limit?", "search?"],
+        "response_shape": { "data": ["Campaign"], "pagination": "PageInfo" }
       },
       {
         "method": "GET",
         "path": "/campaigns/{id}",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "integer 1..4294967295"
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/campaigns/2\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "id": 2,
-            "org": "GAVYQQXKLPOMVJUQ34733W4D56OCL4WSEOMTMOBLQW7GB5RIGPCMZLWE",
-            "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-            "title": "Agua potable para escuela rural",
-            "goal": "150000000",
-            "deadline": 1806963344,
-            "threshold": 2,
-            "total_raised": "150000000",
-            "total_released": "150000000",
-            "total_refunded": "0",
-            "status": "Completed",
-            "progress_percent": 100,
-            "funds_held": "0",
-            "milestones": [
-              {
-                "index": 0,
-                "description": "Perforación y análisis del pozo",
-                "amount": "60000000",
-                "status": "Released"
-              },
-              {
-                "index": 1,
-                "description": "Instalación de bomba y filtros",
-                "amount": "90000000",
-                "status": "Released"
-              }
-            ]
-          }
-        }
+        "response_shape": "CampaignWithMilestones"
       },
       {
         "method": "GET",
         "path": "/campaigns/{id}/donations",
-        "parameters": [
-          { "in": "path", "name": "id", "required": true, "type": "integer" },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "type": "integer",
-            "default": 1
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "type": "integer 1..100",
-            "default": 20
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/campaigns/2/donations?page=1&limit=20\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "data": [
-              {
-                "campaign_id": 2,
-                "donor": "GBVQRXGWFRNRW7PCGEGNKY6ULUDO7AQMH4HG4I444MYY5ECVM7KY4DKH",
-                "amount": "60000000",
-                "refunded_amount": "0",
-                "updated_ledger": 5076835
-              },
-              {
-                "campaign_id": 2,
-                "donor": "GCL3AOWMDCDC7S42OYBQ4Q37IX32AG336XPZADQF6VACDSM3D5FC53QE",
-                "amount": "50000000",
-                "refunded_amount": "0",
-                "updated_ledger": 5076833
-              },
-              {
-                "campaign_id": 2,
-                "donor": "GDOPQWKZJSIIK3TSU6I3FAFSGQUSOS3HMW6O6AAQG656MARN3ODUSJS6",
-                "amount": "40000000",
-                "refunded_amount": "0",
-                "updated_ledger": 5076834
-              }
-            ],
-            "pagination": { "page": 1, "limit": 20, "total": 3, "pages": 1 }
-          }
-        }
+        "response_shape": "Page<Position>"
       },
       {
         "method": "GET",
         "path": "/campaigns/{id}/timeline",
-        "parameters": [
-          { "in": "path", "name": "id", "required": true, "type": "integer" },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "type": "integer",
-            "default": 1
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "type": "integer 1..100",
-            "default": 20
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/campaigns/2/timeline?page=1&limit=20\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "data": [
-              {
-                "event_id": "0021804827407343616-0000000000",
-                "tx_hash": "6fc751de71d1829130ad154ce8cee45a260f11ee6e62e7afb37d3c7e00f91884",
-                "ledger": 5076832,
-                "timestamp": "2026-10-07T21:15:47Z",
-                "type": "campaign_created",
-                "payload": {
-                  "topics": ["campaign_created", 2],
-                  "value": { "deadline": "1806963344", "goal": "150000000" }
-                },
-                "explorer_url": "https://stellar.expert/explorer/testnet/tx/6fc751de71d1829130ad154ce8cee45a260f11ee6e62e7afb37d3c7e00f91884"
-              }
-            ],
-            "pagination": { "page": 1, "limit": 20, "total": 13, "pages": 1 }
-          }
-        }
+        "response_shape": "Page<{event_id,tx_hash,ledger,timestamp,type,payload,explorer_url}>"
       },
       {
         "method": "GET",
         "path": "/campaigns/{id}/audit",
-        "parameters": [
-          { "in": "path", "name": "id", "required": true, "type": "integer" }
-        ],
-        "request_example": "curl \"$API_BASE_URL/campaigns/2/audit\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "campaign_id": 2,
-            "accounting": {
-              "total_incoming": "150000000",
-              "total_released": "150000000",
-              "total_refunded": "0",
-              "total_outgoing": "150000000",
-              "expected_contract_balance": "0"
-            },
-            "on_chain": {
-              "total_raised": "150000000",
-              "total_released": "150000000",
-              "contract_balance": "130000000"
-            },
-            "consistent": false,
-            "verified_at": "2026-10-07T22:26:41.905Z"
-          },
-          "warning": "contract_balance es balance global para el token; no atribuirlo a esta campaña."
-        }
+        "response_shape": "{campaign_id,accounting,on_chain,consistent,verified_at}"
+      },
+      {
+        "method": "GET",
+        "path": "/audit/solvency",
+        "response_shape": "{tokens:[{token,contract_balance,expected_balance,campaigns,consistent}],consistent,verified_at}"
       },
       {
         "method": "GET",
         "path": "/donors/{address}/donations",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "address",
-            "required": true,
-            "type": "Stellar public key G..."
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "type": "integer",
-            "default": 1
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "type": "integer 1..100",
-            "default": 20
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/donors/GCL3AOWMDCDC7S42OYBQ4Q37IX32AG336XPZADQF6VACDSM3D5FC53QE/donations?page=1&limit=20\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "data": [
-              {
-                "campaign_id": 3,
-                "donor": "GCL3AOWMDCDC7S42OYBQ4Q37IX32AG336XPZADQF6VACDSM3D5FC53QE",
-                "amount": "30000000",
-                "refunded_amount": "0",
-                "updated_ledger": 5076837,
-                "title": "Útiles escolares para 200 niños",
-                "status": "Active"
-              },
-              {
-                "campaign_id": 2,
-                "donor": "GCL3AOWMDCDC7S42OYBQ4Q37IX32AG336XPZADQF6VACDSM3D5FC53QE",
-                "amount": "50000000",
-                "refunded_amount": "0",
-                "updated_ledger": 5076833,
-                "title": "Agua potable para escuela rural",
-                "status": "Completed"
-              }
-            ],
-            "pagination": { "page": 1, "limit": 20, "total": 2, "pages": 1 }
-          }
-        }
+        "response_shape": "Page<PositionWithCampaign>"
       },
       {
         "method": "GET",
         "path": "/stats",
-        "parameters": [],
-        "request_example": "curl \"$API_BASE_URL/stats\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "total_donated": "280100000",
-            "campaign_count": 4,
-            "donor_count": 4,
-            "total_released": "150100000"
-          }
-        }
+        "response_shape": "{total_donated,campaign_count,donor_count,total_released}"
       },
       {
         "method": "POST",
         "path": "/tx/create-campaign",
-        "required_json_body": {
-          "source": "G...",
-          "org": "G...",
-          "token": "C...",
-          "title": "string",
-          "description_uri": "URL",
-          "milestones": [
-            { "description": "string", "amount": "positive integer string" }
-          ],
-          "verifiers": ["G..."],
-          "threshold": "positive integer",
-          "deadline": "future u64 decimal string"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/create-campaign\" -H 'content-type: application/json' -d '{\"source\":\"<ORG_G>\",\"org\":\"<ORG_G>\",\"token\":\"<TOKEN_C>\",\"title\":\"Campaña demo\",\"description_uri\":\"https://example.org/demo\",\"milestones\":[{\"description\":\"Primera etapa\",\"amount\":\"10000000\"}],\"verifiers\":[\"<VERIFIER_G>\"],\"threshold\":1,\"deadline\":\"1806963344\"}'",
-        "observed_response": {
-          "status": 200,
-          "body_shape": {
-            "xdr": "XDR ensamblado real; omitido del archivo",
-            "signed": false
-          },
-          "xdr_parsed_as": "invokeHostFunction",
-          "signature_count": 0,
-          "xdr_length": 1484
-        }
+        "body": "{source,org,token,title,description_uri,milestones,window_seconds?,deadline}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
       },
       {
         "method": "POST",
         "path": "/tx/donate",
-        "required_json_body": {
-          "source": "G... (igual a donor)",
-          "donor": "G...",
-          "campaign_id": "positive integer",
-          "amount": "positive integer string base units"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/donate\" -H 'content-type: application/json' -d '{\"source\":\"<DONOR_G>\",\"donor\":\"<DONOR_G>\",\"campaign_id\":4,\"amount\":\"10000000\"}'",
-        "observed_response": {
-          "status": 200,
-          "body_shape": {
-            "xdr": "XDR ensamblado real; omitido del archivo",
-            "signed": false
-          },
-          "xdr_parsed_as": "invokeHostFunction",
-          "signature_count": 0,
-          "xdr_length": 1496
-        }
+        "body": "{source,donor,campaign_id,amount}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
       },
       {
         "method": "POST",
         "path": "/tx/submit-evidence",
-        "required_json_body": {
-          "campaign_id": "positive integer",
-          "milestone_index": "integer 0..31",
-          "evidence_hash": "64 lowercase hex",
-          "evidence_uri": "URL"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/submit-evidence\" -H 'content-type: application/json' -d '{\"campaign_id\":4,\"milestone_index\":0,\"evidence_hash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"evidence_uri\":\"https://example.org/evidence.pdf\"}'",
-        "observed_response": {
-          "status": 200,
-          "body_shape": {
-            "xdr": "XDR ensamblado real; omitido del archivo",
-            "signed": false
-          },
-          "xdr_parsed_as": "invokeHostFunction",
-          "signature_count": 0,
-          "xdr_length": 928
-        }
+        "body": "{campaign_id,milestone_index,evidence_hash,evidence_uri}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
       },
       {
         "method": "POST",
-        "path": "/tx/approve-milestone",
-        "required_json_body": {
-          "source": "G... (igual a verifier)",
-          "verifier": "G...",
-          "campaign_id": "positive integer",
-          "milestone_index": "integer 0..31"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/approve-milestone\" -H 'content-type: application/json' -d '{\"source\":\"<VERIFIER_G>\",\"verifier\":\"<VERIFIER_G>\",\"campaign_id\":3,\"milestone_index\":0}'",
-        "observed_response": {
-          "status": 200,
-          "body_shape": {
-            "xdr": "XDR ensamblado real; omitido del archivo",
-            "signed": false
-          },
-          "xdr_parsed_as": "invokeHostFunction",
-          "signature_count": 0,
-          "xdr_length": 1112
-        }
+        "path": "/tx/withdraw",
+        "body": "{source,donor,campaign_id}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
       },
       {
         "method": "POST",
         "path": "/tx/claim-refund",
-        "required_json_body": {
-          "source": "G... (igual a donor)",
-          "donor": "G...",
-          "campaign_id": "positive integer"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/claim-refund\" -H 'content-type: application/json' -d '{\"source\":\"<DONOR_G>\",\"donor\":\"<DONOR_G>\",\"campaign_id\":4}'",
-        "observed_response": {
-          "status": 200,
-          "body_shape": {
-            "xdr": "XDR ensamblado real; omitido del archivo",
-            "signed": false
-          },
-          "xdr_parsed_as": "invokeHostFunction",
-          "signature_count": 0,
-          "xdr_length": 284
-        },
-        "warning": "No se envió; la campaña 4 no ha vencido y el contrato rechazará su ejecución."
+        "deprecated_alias_for": "/tx/withdraw",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
+      },
+      {
+        "method": "POST",
+        "path": "/tx/release-milestone",
+        "body": "{source,campaign_id,milestone_index}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
+      },
+      {
+        "method": "POST",
+        "path": "/tx/reclaim-bond",
+        "body": "{campaign_id}",
+        "response": { "xdr": "base64 unsigned transaction envelope", "signed": false }
+      },
+      {
+        "method": "POST",
+        "path": "/tx/approve-milestone",
+        "status": 410,
+        "response": {
+          "error": {
+            "code": "ENDPOINT_REMOVED",
+            "message": "Las aprobaciones de verificadores fueron eliminadas."
+          }
+        }
       },
       {
         "method": "POST",
         "path": "/tx/submit",
-        "required_json_body": {
-          "xdr": "signed envelope XDR string, length 1..100000"
-        },
-        "request_example": "curl -X POST \"$API_BASE_URL/tx/submit\" -H 'content-type: application/json' -d '{\"xdr\":\"<SIGNED_XDR_FROM_WALLET>\"}'",
-        "observed_response": {
-          "status": 400,
-          "body": {
-            "error": {
-              "code": "INVALID_TRANSACTION",
-              "message": "Signed transaction XDR is invalid."
-            }
-          }
-        },
-        "success_response_schema": {
-          "hash": "64 lowercase hex",
-          "status": "SUCCESS",
-          "explorer_url": "URL"
-        },
-        "pending_response_schema": {
-          "hash": "string",
-          "status": "PENDING",
-          "explorer_url": "URL",
-          "http_status": 202
-        }
+        "body": "{xdr}",
+        "response_shape": "{hash,status,explorer_url}"
       },
       {
         "method": "POST",
         "path": "/evidence/upload",
-        "required_multipart_body": { "file": "PDF/PNG/JPEG <= 10 MiB" },
-        "request_example": "curl -X POST \"$API_BASE_URL/evidence/upload\" -F 'file=@evidence.pdf;type=application/pdf'",
-        "observed_response": {
-          "status": 201,
-          "body": {
-            "hash": "2db9204c62d574f84e20030f0377dc9d3ac08f8ed8c714b12a53ea4b0cee361e",
-            "uri": "/evidence/2db9204c62d574f84e20030f0377dc9d3ac08f8ed8c714b12a53ea4b0cee361e",
-            "content_type": "application/pdf"
-          }
-        }
+        "content_type": "multipart/form-data",
+        "response_shape": "{hash,uri,content_type}"
       },
       {
         "method": "GET",
         "path": "/evidence/{hash}",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "hash",
-            "required": true,
-            "type": "64 lowercase hex SHA-256"
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/evidence/<SHA256>\" --output evidence.pdf",
-        "observed_response": {
-          "status": 200,
-          "content_type": "application/pdf",
-          "bytes": 40
-        }
+        "response": "binary PDF, PNG, or JPEG"
       },
       {
         "method": "GET",
         "path": "/evidence/{hash}/verify",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "hash",
-            "required": true,
-            "type": "64 lowercase hex SHA-256"
-          }
-        ],
-        "request_example": "curl \"$API_BASE_URL/evidence/<SHA256>/verify\"",
-        "observed_response": {
-          "status": 200,
-          "body": {
-            "hash": "2db9204c62d574f84e20030f0377dc9d3ac08f8ed8c714b12a53ea4b0cee361e",
-            "calculated_hash": "2db9204c62d574f84e20030f0377dc9d3ac08f8ed8c714b12a53ea4b0cee361e",
-            "file_matches_hash": true,
-            "on_chain": false,
-            "campaign_id": null,
-            "milestone_index": null,
-            "verified": false
-          }
-        }
+        "response_shape": "{hash,calculated_hash,file_matches_hash,on_chain,campaign_id,milestone_index,verified}"
       }
     ],
-    "api_error_codes": {
-      "INVALID_REQUEST": "Solicitud no coincide con el esquema.",
-      "INVALID_TRANSACTION": "XDR inválido, sin firma o fuera de los métodos permitidos.",
-      "FILE_REQUIRED": "Falta archivo.",
-      "CAMPAIGN_NOT_FOUND": "Campaña no indexada/no encontrada.",
-      "EVIDENCE_NOT_FOUND": "Archivo no encontrado.",
-      "FILE_TOO_LARGE": "Más de 10 MiB.",
-      "UNSUPPORTED_FILE_TYPE": "Solo PDF/PNG/JPEG con bytes compatibles.",
-      "RATE_LIMITED": "Más de 100 solicitudes por ventana.",
-      "INTERNAL_ERROR": "Error no clasificado; detalle no expuesto.",
-      "CONTRACT_NOT_CONFIGURED": "CONTRACT_ID ausente en backend."
-    },
-    "contract_errors": [
-      {
-        "code": 1,
-        "name": "AlreadyInitialized",
-        "es": "El contrato ya fue inicializado."
-      },
-      {
-        "code": 2,
-        "name": "NotInitialized",
-        "es": "El contrato aún no está inicializado."
-      },
-      { "code": 3, "name": "CampaignNotFound", "es": "La campaña no existe." },
-      {
-        "code": 4,
-        "name": "InvalidCampaign",
-        "es": "Los datos de campaña no son válidos."
-      },
-      {
-        "code": 5,
-        "name": "InvalidMilestone",
-        "es": "El hito indicado no existe."
-      },
-      {
-        "code": 6,
-        "name": "InvalidAmount",
-        "es": "Importe o descripción del hito no válidos."
-      },
-      {
-        "code": 7,
-        "name": "InvalidThreshold",
-        "es": "Umbral fuera del rango de verificadores."
-      },
-      {
-        "code": 8,
-        "name": "InvalidDeadline",
-        "es": "Fecha límite inválida o no vencida para reembolso."
-      },
-      { "code": 9, "name": "DuplicateVerifier", "es": "Verificador repetido." },
-      {
-        "code": 10,
-        "name": "OrganizationCannotVerify",
-        "es": "La organización no puede verificarse a sí misma."
-      },
-      {
-        "code": 11,
-        "name": "CampaignNotActive",
-        "es": "La campaña no está activa para esta acción."
-      },
-      { "code": 12, "name": "CampaignExpired", "es": "La campaña venció." },
-      {
-        "code": 13,
-        "name": "InvalidMilestoneOrder",
-        "es": "Hitos previos sin liberar."
-      },
-      {
-        "code": 14,
-        "name": "InvalidMilestoneStatus",
-        "es": "El hito no tiene el estado requerido."
-      },
-      {
-        "code": 15,
-        "name": "NotVerifier",
-        "es": "La wallet no es verificadora asignada."
-      },
-      {
-        "code": 16,
-        "name": "AlreadyApproved",
-        "es": "La wallet ya aprobó este hito."
-      },
-      {
-        "code": 17,
-        "name": "AlreadyRefunded",
-        "es": "Ya se reclamó este reembolso."
-      },
-      {
-        "code": 18,
-        "name": "NothingToRefund",
-        "es": "No hay aporte reembolsable."
-      },
-      {
-        "code": 19,
-        "name": "NoRefundDue",
-        "es": "El importe redondeado del reembolso es cero."
-      },
-      {
-        "code": 20,
-        "name": "ArithmeticOverflow",
-        "es": "El importe excede el rango aritmético seguro."
-      }
+    "position_fields": [
+      "campaign_id",
+      "donor",
+      "amount",
+      "shares",
+      "current_value",
+      "withdrawn",
+      "withdrawable",
+      "updated_ledger"
+    ],
+    "campaign_fields": [
+      "id",
+      "org",
+      "token",
+      "title",
+      "description_uri",
+      "goal",
+      "deadline",
+      "window_secs",
+      "bond_amount",
+      "bond_state",
+      "total_raised",
+      "total_released",
+      "total_withdrawn",
+      "held",
+      "funded",
+      "progress_percent",
+      "max_donation",
+      "status",
+      "milestones"
     ]
   },
-  "freighter": {
-    "package": "@stellar/freighter-api",
-    "installed_in_this_repository": false,
-    "package_manifest_reference_count": 0,
-    "latest_npm_version_verified": "6.0.1",
-    "official_docs_verified_methods": [
-      "isConnected",
-      "requestAccess",
-      "getNetwork",
-      "signTransaction"
-    ],
-    "version_status": "PENDIENTE: Base44 no forma parte de este repo; 6.0.1 fue verificada en npm/docs oficiales, pero no está instalada localmente.",
-    "wallet_code": "import {getNetwork,isConnected,requestAccess,signTransaction} from '@stellar/freighter-api'; const connected=await isConnected(); if(connected.error) throw new Error(connected.error.message); if(!connected.isConnected) throw new Error('Instala Freighter'); const access=await requestAccess(); if(access.error) throw new Error(access.error.message); const net=await getNetwork(); if(net.error) throw new Error(net.error.message); if(net.network!=='TESTNET'||net.networkPassphrase!=='Test SDF Network ; September 2015') throw new Error('Cambia Freighter a Testnet'); const prepared=await fetch(`${API_BASE_URL}/tx/donate`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:access.address,donor:access.address,campaign_id:4,amount:'10000000'})}).then(r=>r.json()); const signed=await signTransaction(prepared.xdr,{network:'TESTNET',address:access.address}); if(signed.error) throw new Error(signed.error.message); const sent=await fetch(`${API_BASE_URL}/tx/submit`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({xdr:signed.signedTxXdr})}); const result=await sent.json(); if(sent.status!==200&&sent.status!==202) throw new Error(result.error?.message||'Relay failed'); console.log(result);",
-    "fund_testnet": "Friendbot URL: https://friendbot.stellar.org/?addr=<PUBLIC_G_ADDRESS>",
-    "test_usdc": "Not configured; do not show USDC donation controls until issuer and SAC exist."
-  },
-  "demo": {
-    "campaigns": [
-      {
-        "id": 1,
-        "title": "ClearFun testnet smoke campaign",
-        "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        "goal": "100000",
-        "raised": "100000",
-        "released": "100000",
-        "status": "Completed",
-        "milestones": [{ "amount": "100000", "status": "Released" }],
-        "transactions": [
-          "https://stellar.expert/explorer/testnet/tx/d56818a632c431c8ae3dafd9d0ab300e034d50076c6cecff8b5953d23e58ab0a",
-          "https://stellar.expert/explorer/testnet/tx/668e38dee1be2b375c286ed5ee9be82d92e133b0f58828aeb06ac9578b4d129f",
-          "https://stellar.expert/explorer/testnet/tx/a4e4abb92f25d7e09f47e0d80a98a86d108a71c48e724f54cbbddac5223732cb"
-        ]
-      },
-      {
-        "id": 2,
-        "title": "Agua potable para escuela rural",
-        "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        "goal": "150000000",
-        "raised": "150000000",
-        "released": "150000000",
-        "status": "Completed",
-        "milestones": [
-          { "amount": "60000000", "status": "Released" },
-          { "amount": "90000000", "status": "Released" }
-        ],
-        "transactions": [
-          "https://stellar.expert/explorer/testnet/tx/6fc751de71d1829130ad154ce8cee45a260f11ee6e62e7afb37d3c7e00f91884",
-          "https://stellar.expert/explorer/testnet/tx/03cfa54731f34b66295b42bbcd078972766db82323764303bd43979e6857d7d3",
-          "https://stellar.expert/explorer/testnet/tx/ba7eefc6ab41edf131f6928a0b81b57d1429e05727c318784627011a7e3651d6",
-          "https://stellar.expert/explorer/testnet/tx/9ef87f5b213fdb72efd6aa13ea349f245d88aa8ed0e0f21c5d961722040a88cd",
-          "https://stellar.expert/explorer/testnet/tx/42f17b22600ef39925d305a505e858020c2d21bf765286fc34adf09ec1f74536",
-          "https://stellar.expert/explorer/testnet/tx/b8f84309d173105e8768fa8577a9b4c330d140246863e21e0e6d827cac8c7862",
-          "https://stellar.expert/explorer/testnet/tx/3c4f4ffe4f7afae2e144ab0cc9a570d679d0c43143fd9e3794222cfdcfe5bdb3",
-          "https://stellar.expert/explorer/testnet/tx/65f074601e537ecb5140e58aeedbcf5c5c06bbbe287d5145688a785a2c57346f",
-          "https://stellar.expert/explorer/testnet/tx/ba1488779c48791be1e62d43508222d120309d76be83cbcf2324541f03f58ac7"
-        ]
-      },
-      {
-        "id": 3,
-        "title": "Útiles escolares para 200 niños",
-        "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        "goal": "200000000",
-        "raised": "100000000",
-        "released": "0",
-        "status": "Active",
-        "milestones": [
-          {
-            "amount": "80000000",
-            "status": "EvidenceSubmitted",
-            "approval_count": 1
-          },
-          { "amount": "120000000", "status": "Pending" }
-        ],
-        "transactions": [
-          "https://stellar.expert/explorer/testnet/tx/30db67a11cb024641057ed6af9d7ee2c6472f4bdb30991d6a9c5a0ba810acbe2",
-          "https://stellar.expert/explorer/testnet/tx/e100fcfa3d554f7e4582456c8628d3bbf9065da7ea8821bf255023044ebab770",
-          "https://stellar.expert/explorer/testnet/tx/faf078f9a025f51416311d3c1999975f2937cf678f20f43c14c0cac4cb52e063",
-          "https://stellar.expert/explorer/testnet/tx/22f6dc831df750c1dfc38ec9b8dfee4168f45c4329d18aec2f3fd0931058730e",
-          "https://stellar.expert/explorer/testnet/tx/5f01381ede983d00c29329cd655224a6d676e0eb56326f2db06ab6fe86b5ea24",
-          "https://stellar.expert/explorer/testnet/tx/a22275ba6843fb8465a971167b3015c81057cb976764d19cac4a005018e9e758"
-        ]
-      },
-      {
-        "id": 4,
-        "title": "Reconstrucción de sede vecinal",
-        "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-        "goal": "120000000",
-        "raised": "30000000",
-        "released": "0",
-        "status": "Active",
-        "milestones": [
-          { "amount": "40000000", "status": "Pending" },
-          { "amount": "80000000", "status": "Pending" }
-        ],
-        "transactions": [
-          "https://stellar.expert/explorer/testnet/tx/9a7cc9a38b674230961f190a0333d50445a0a0496d0c09addf3eb9177d7adc1e",
-          "https://stellar.expert/explorer/testnet/tx/d40ee60dea15134a87c9499c8cce3eef39d4f24326cda19b3192f7b5816416e5",
-          "https://stellar.expert/explorer/testnet/tx/4dacfc764d79df864f3e5269cf81301fc7d8ea21b9f7e945f164f87806370df5"
-        ]
-      }
-    ],
-    "actors": [
-      {
-        "role": "organizacion",
-        "public_key": "GAVYQQXKLPOMVJUQ34733W4D56OCL4WSEOMTMOBLQW7GB5RIGPCMZLWE",
-        "secret_env_variable": "SMOKE_ORG_SECRET"
-      },
-      {
-        "role": "donante_1",
-        "public_key": "GCL3AOWMDCDC7S42OYBQ4Q37IX32AG336XPZADQF6VACDSM3D5FC53QE",
-        "secret_env_variable": "SMOKE_DONOR_SECRET"
-      },
-      {
-        "role": "donante_2",
-        "public_key": "GDOPQWKZJSIIK3TSU6I3FAFSGQUSOS3HMW6O6AAQG656MARN3ODUSJS6",
-        "secret_env_variable": "SMOKE_DONOR_2_SECRET"
-      },
-      {
-        "role": "donante_3",
-        "public_key": "GBVQRXGWFRNRW7PCGEGNKY6ULUDO7AQMH4HG4I444MYY5ECVM7KY4DKH",
-        "secret_env_variable": "SMOKE_DONOR_3_SECRET"
-      },
-      {
-        "role": "verificador_1",
-        "public_key": "GDFOF6COLLXLML6HE5DCUWZNTRF2J5JT72KDSEVM7VLB35H6MDUZDQIY",
-        "secret_env_variable": "SMOKE_VERIFIER_1_SECRET"
-      },
-      {
-        "role": "verificador_2",
-        "public_key": "GAUNN623QGHNJNP7K2DXTSFW5W6X4ADDCT4DE47MQ4KR46HDFXGU32FY",
-        "secret_env_variable": "SMOKE_VERIFIER_2_SECRET"
-      }
-    ],
-    "evidence_note": "Seed hashes deterministic demo metadata and uses example.org URIs; not actual invoices."
-  },
-  "models": {
-    "Campaign": {
-      "id": "number",
-      "org": "Stellar G... address",
-      "token": "contract C... address",
-      "title": "string",
-      "description_uri": "string URL",
-      "goal": "string i128 base units",
-      "deadline": "number Unix epoch seconds",
-      "threshold": "number",
-      "verifiers": "string[] public addresses",
-      "total_raised": "string i128 base units",
-      "total_released": "string i128 base units",
-      "total_refunded": "string i128 base units",
-      "status": ["Active", "Completed", "Expired", "Cancelled"],
-      "progress_percent": "number",
-      "funds_held": "string i128 base units"
-    },
-    "Milestone": {
-      "index": "number zero-based",
-      "description": "string",
-      "amount": "string i128 base units",
-      "status": ["Pending", "EvidenceSubmitted", "Released"],
-      "evidence_hash": "string SHA-256 hex",
-      "evidence_uri": "string URL",
-      "approvals": "string[] public addresses"
-    },
-    "Donation": {
-      "campaign_id": "number",
-      "donor": "string public G... address",
-      "amount": "string i128 base units",
-      "refunded_amount": "string i128 base units",
-      "updated_ledger": "number",
-      "title": "optional string in donor history",
-      "status": "optional CampaignStatus in donor history"
-    },
-    "TimelineEvent": {
-      "event_id": "string",
-      "tx_hash": "string",
-      "ledger": "number",
-      "timestamp": "ISO-8601 UTC string",
-      "type": "string event name",
-      "payload": "decoded object",
-      "explorer_url": "URL"
-    },
-    "AuditSummary": {
-      "campaign_id": "number",
-      "accounting": "string integer base-unit totals",
-      "on_chain": "string integer base-unit totals",
-      "consistent": "boolean; observed false due global balance semantics",
-      "verified_at": "ISO-8601 UTC string"
-    },
-    "Stats": {
-      "total_donated": "string base units",
-      "campaign_count": "number",
-      "donor_count": "number",
-      "total_released": "string base units"
-    },
-    "datetime_notes": {
-      "deadline": "Unix epoch seconds, UTC conversion; seeded campaigns: 2027-04-05T22:15:44Z",
-      "TimelineEvent.timestamp": "ISO-8601 UTC with Z",
-      "AuditSummary.verified_at": "ISO-8601 UTC with Z"
-    }
-  },
-  "business_rules": [
-    "Donations only while Active and before deadline; UI must cap at goal minus total_raised because contract currently allows over-goal contributions and can strand excess.",
-    "Organization creates campaigns and submits evidence; organization cannot be a verifier.",
-    "Submit milestone evidence in order; next evidence waits until all earlier milestones Released.",
-    "Verifier must be assigned, milestone EvidenceSubmitted, and may approve only once per milestone.",
-    "At threshold, release automatically if allocated/token funds are sufficient; otherwise release_milestone can be called by anyone, but current REST API has no preparation endpoint for it.",
-    "Refund only after deadline and while campaign is not Completed or Cancelled; donor must have contribution and no previous refund. First refund marks status Expired.",
-    "Cancel only by organization and only while no contributions were raised; current REST API has no cancel-campaign preparation endpoint.",
-    "Audit balance is contract-wide for a token, not campaign-specific; observed campaign 2 consistent=false.",
-    "Seed evidence URIs and deterministic hashes are demonstrative placeholders, not real evidence.",
-    "Testnet only; no real value or personal documents."
+  "contract_errors_es": [
+    { "code": 1, "name": "AlreadyInitialized", "message": "El contrato ya fue inicializado." },
+    { "code": 2, "name": "NotInitialized", "message": "El contrato todavía no fue inicializado." },
+    { "code": 3, "name": "CampaignNotFound", "message": "No existe la campaña indicada." },
+    { "code": 4, "name": "InvalidCampaign", "message": "Los datos de la campaña o evidencia no son válidos." },
+    { "code": 5, "name": "InvalidMilestone", "message": "No existe el hito indicado." },
+    { "code": 6, "name": "InvalidAmount", "message": "El monto debe ser positivo y válido." },
+    { "code": 7, "name": "InvalidDeadline", "message": "El deadline no está en el intervalo permitido." },
+    { "code": 8, "name": "CampaignNotActive", "message": "La campaña no está activa para esta acción." },
+    { "code": 9, "name": "CampaignExpired", "message": "La campaña venció y no admite donaciones." },
+    { "code": 10, "name": "InvalidMilestoneOrder", "message": "Los hitos anteriores no se liberaron." },
+    { "code": 11, "name": "InvalidMilestoneStatus", "message": "El hito no está en un estado que permita esta acción." },
+    { "code": 12, "name": "ArithmeticOverflow", "message": "Una operación excedería el rango numérico." },
+    { "code": 13, "name": "ExceedsGoal", "message": "La donación superaría la meta financiable." },
+    { "code": 14, "name": "OrganizationCannotDonate", "message": "La organización no puede donar a su campaña." },
+    { "code": 15, "name": "NotFunded", "message": "No hay fondos suficientes para el hito." },
+    { "code": 16, "name": "WindowNotOpen", "message": "La ventana aún no venció o no habilita esta acción." },
+    { "code": 17, "name": "ReleasePending", "message": "Debe liberarse un hito cuya ventana ya venció." },
+    { "code": 18, "name": "NothingToWithdraw", "message": "La posición no tiene valor retirable." },
+    { "code": 19, "name": "BondUnavailable", "message": "La garantía no cumple las condiciones de recuperación." },
+    { "code": 20, "name": "InvalidWindow", "message": "La ventana debe ser de 60 a 2.592.000 segundos." },
+    { "code": 21, "name": "ZeroShares", "message": "El monto no generaría participaciones." }
   ],
-  "verification": {
-    "public_url_check": "PENDIENTE: no Render/Railway hostname exists in repo or deployment docs.",
-    "runtime_used": "Temporary local Node backend and Testnet RPC; not a public host and not Docker.",
-    "docker_available": false,
-    "health": { "http_status": 200, "body": { "status": "ok" } },
-    "stats": {
-      "http_status": 200,
-      "body": {
-        "total_donated": "280100000",
-        "campaign_count": 4,
-        "donor_count": 4,
-        "total_released": "150100000"
-      }
-    },
-    "campaign_list": { "http_status": 200, "campaign_ids": [4, 3, 2, 1] },
-    "campaign_2": {
-      "http_status": 200,
-      "status": "Completed",
-      "goal": "150000000",
-      "total_raised": "150000000",
-      "total_released": "150000000"
-    },
-    "campaign_2_timeline": { "http_status": 200, "event_count": 13 },
-    "campaign_2_audit": {
-      "http_status": 200,
-      "consistent": false,
-      "on_chain_contract_balance": "130000000"
-    },
-    "donate_unsigned_xdr": {
-      "http_status": 200,
-      "parsed": true,
-      "operation": "invokeHostFunction",
-      "signatures": 0,
-      "submitted": false
-    },
-    "cors_test": {
-      "origin": "https://base44-preview.example (simulated, not actual Base44 domain)",
-      "allow_origin_header": "https://base44-preview.example",
-      "mode": "temporary ALLOWED_ORIGINS=* process env"
-    },
-    "secret_regex_scan": { "regex": "S[A-Z2-7]{55}", "matches": 0 }
+  "events_es": [
+    { "name": "campaign_created", "label": "Campaña creada" },
+    { "name": "donated", "label": "Donación recibida" },
+    { "name": "evidence_submitted", "label": "Evidencia publicada; ventana abierta" },
+    { "name": "exited", "label": "Donante retiró su parte" },
+    { "name": "milestone_released", "label": "Etapa liberada" },
+    { "name": "campaign_completed", "label": "Campaña completada" },
+    { "name": "bond_returned", "label": "Garantía devuelta" },
+    { "name": "bond_slashed", "label": "Garantía añadida al fondo de salida" },
+    { "name": "campaign_cancelled", "label": "Campaña cancelada" }
+  ],
+  "button_rules": {
+    "donate": "Active, antes del deadline, wallet != org, amount > 0 y amount <= max_donation.",
+    "withdraw": "current_value > 0 y withdrawable=true.",
+    "submit_evidence": "Wallet org; siguiente milestone Pending; anteriores Released; held >= amount; ventana completa antes del deadline.",
+    "release_milestone": "EvidenceSubmitted, ahora >= window_end y held > 0; función pública.",
+    "reclaim_bond": "Wallet org; deadline vencido; status != Completed; total_shares == 0; bond_state == Held."
   },
-  "pending": [
-    "Deploy Render blueprint and verify the public HTTPS API_BASE_URL.",
-    "Create Base44 app and obtain exact production and preview/editor origins; configure ALLOWED_ORIGINS and retest production CORS.",
-    "Freighter API is not installed in this repository. Official published version 6.0.1 was checked; verify the version resolved by Base44.",
-    "No test USDC issuer or TOKEN_USDC_ID is configured.",
-    "Fix contract over-funding risk and backend audit semantics in a separately authorized code phase."
+  "limitations": [
+    "El silencio durante la ventana equivale a aceptar la evidencia.",
+    "Una evidencia falsa convincente puede engañar a los donantes.",
+    "La garantía no equivale al monto de una estafa grande.",
+    "No hay admin, verificadores ni disputas.",
+    "El despliegue, respuestas dinámicas remotas y enlaces del smoke-test nuevo siguen pendientes."
   ]
 }

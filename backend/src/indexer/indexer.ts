@@ -172,7 +172,7 @@ function decodeEvent(event: RpcEvent): DecodedEvent {
         campaignId,
         donor: toStringValue(topics[2], "donor"),
         amount: toBigIntString(value.amount, "amount"),
-        totalRaised: toBigIntString(value.total_raised, "total_raised"),
+        shares: toBigIntString(value.shares, "shares"),
       };
       break;
     case "evidence_submitted":
@@ -183,15 +183,17 @@ function decodeEvent(event: RpcEvent): DecodedEvent {
         milestoneIndex: toInteger(topics[2], "milestone_index"),
         evidenceHash: evidenceHash(value.evidence_hash),
         evidenceUri: toStringValue(value.evidence_uri, "evidence_uri"),
+        windowEnd: toInteger(value.window_end, "window_end"),
       };
       break;
-    case "milestone_approved":
+    case "exited":
       if (campaignId === undefined) throw new Error("campaign_id is missing.");
       projection = {
         type,
         campaignId,
-        milestoneIndex: toInteger(topics[2], "milestone_index"),
-        verifier: toStringValue(topics[3], "verifier"),
+        donor: toStringValue(topics[2], "donor"),
+        amount: toBigIntString(value.amount, "amount"),
+        shares: toBigIntString(value.shares, "shares"),
       };
       break;
     case "milestone_released":
@@ -203,15 +205,6 @@ function decodeEvent(event: RpcEvent): DecodedEvent {
         amount: toBigIntString(value.amount, "amount"),
       };
       break;
-    case "refund_claimed":
-      if (campaignId === undefined) throw new Error("campaign_id is missing.");
-      projection = {
-        type,
-        campaignId,
-        donor: toStringValue(topics[2], "donor"),
-        amount: toBigIntString(value.amount, "amount"),
-      };
-      break;
     case "campaign_completed":
       if (campaignId === undefined) throw new Error("campaign_id is missing.");
       projection = {
@@ -220,6 +213,8 @@ function decodeEvent(event: RpcEvent): DecodedEvent {
         totalReleased: toBigIntString(value.total_released, "total_released"),
       };
       break;
+    case "bond_returned":
+    case "bond_slashed":
     case "campaign_cancelled":
       if (campaignId === undefined) throw new Error("campaign_id is missing.");
       projection = { type, campaignId };
@@ -237,8 +232,7 @@ function decodeEvent(event: RpcEvent): DecodedEvent {
 function nativeCampaignToSnapshot(value: unknown): CampaignSnapshot {
   const campaign = toRecord(value, "campaign getter result");
   const milestones = campaign.milestones;
-  const verifiers = campaign.verifiers;
-  if (!Array.isArray(milestones) || !Array.isArray(verifiers)) {
+  if (!Array.isArray(milestones)) {
     throw new Error("The get_campaign getter returned an invalid campaign.");
   }
   return {
@@ -252,19 +246,21 @@ function nativeCampaignToSnapshot(value: unknown): CampaignSnapshot {
     ),
     goal: toBigIntString(campaign.goal, "campaign goal"),
     deadline: toInteger(campaign.deadline, "campaign deadline"),
-    threshold: toInteger(campaign.threshold, "campaign threshold"),
+    window_secs: toInteger(campaign.window_secs, "campaign window_secs"),
+    bond_amount: toBigIntString(campaign.bond_amount, "bond_amount"),
+    bond_state: statusValue(campaign.bond_state, "bond_state"),
     total_raised: toBigIntString(campaign.total_raised, "total_raised"),
     total_released: toBigIntString(campaign.total_released, "total_released"),
-    status: statusValue(campaign.status, "campaign status"),
-    verifiers: verifiers.map((address) =>
-      toStringValue(address, "verifier address"),
+    total_withdrawn: toBigIntString(
+      campaign.total_withdrawn,
+      "total_withdrawn",
     ),
+    held: toBigIntString(campaign.held, "held"),
+    total_shares: toBigIntString(campaign.total_shares, "total_shares"),
+    epoch: toInteger(campaign.epoch, "campaign epoch"),
+    status: statusValue(campaign.status, "campaign status"),
     milestones: milestones.map((entry) => {
       const milestone = toRecord(entry, "milestone getter result");
-      const approvals = milestone.approvals;
-      if (!Array.isArray(approvals)) {
-        throw new Error("The get_campaign getter returned invalid approvals.");
-      }
       return {
         description: toStringValue(
           milestone.description,
@@ -277,8 +273,10 @@ function nativeCampaignToSnapshot(value: unknown): CampaignSnapshot {
           typeof milestone.evidence_uri === "string"
             ? milestone.evidence_uri
             : "",
-        approvals: approvals.map((address) =>
-          toStringValue(address, "approval address"),
+        window_end: toInteger(milestone.window_end, "milestone window_end"),
+        released_amount: toBigIntString(
+          milestone.released_amount,
+          "milestone released_amount",
         ),
       };
     }),

@@ -10,18 +10,24 @@ export interface CampaignSnapshot {
   description_uri: string;
   goal: string;
   deadline: number;
-  threshold: number;
+  window_secs: number;
+  bond_amount: string;
+  bond_state: string;
   total_raised: string;
   total_released: string;
+  total_withdrawn: string;
+  held: string;
+  total_shares: string;
+  epoch: number;
   status: string;
-  verifiers: string[];
   milestones: Array<{
     description: string;
     amount: string;
     status: string;
     evidence_hash: string;
     evidence_uri: string;
-    approvals: string[];
+    window_end: number;
+    released_amount: string;
   }>;
 }
 
@@ -42,7 +48,7 @@ export type EventProjection =
       campaignId: number;
       donor: string;
       amount: string;
-      totalRaised: string;
+      shares: string;
     }
   | {
       type: "evidence_submitted";
@@ -50,12 +56,14 @@ export type EventProjection =
       milestoneIndex: number;
       evidenceHash: string;
       evidenceUri: string;
+      windowEnd: number;
     }
   | {
-      type: "milestone_approved";
+      type: "exited";
       campaignId: number;
-      milestoneIndex: number;
-      verifier: string;
+      donor: string;
+      amount: string;
+      shares: string;
     }
   | {
       type: "milestone_released";
@@ -63,13 +71,9 @@ export type EventProjection =
       milestoneIndex: number;
       amount: string;
     }
-  | {
-      type: "refund_claimed";
-      campaignId: number;
-      donor: string;
-      amount: string;
-    }
   | { type: "campaign_completed"; campaignId: number; totalReleased: string }
+  | { type: "bond_returned"; campaignId: number }
+  | { type: "bond_slashed"; campaignId: number }
   | { type: "campaign_cancelled"; campaignId: number }
   | { type: "unknown" };
 
@@ -98,11 +102,15 @@ export class IndexerDatabase {
         description_uri TEXT NOT NULL,
         goal TEXT NOT NULL,
         deadline INTEGER NOT NULL,
-        threshold INTEGER NOT NULL,
-        verifiers_json TEXT NOT NULL,
+        window_secs INTEGER NOT NULL,
+        bond_amount TEXT NOT NULL,
+        bond_state TEXT NOT NULL,
         total_raised TEXT NOT NULL,
         total_released TEXT NOT NULL,
-        total_refunded TEXT NOT NULL DEFAULT '0',
+        total_withdrawn TEXT NOT NULL,
+        held TEXT NOT NULL,
+        total_shares TEXT NOT NULL,
+        epoch INTEGER NOT NULL,
         status TEXT NOT NULL,
         updated_ledger INTEGER NOT NULL
       );
@@ -115,7 +123,8 @@ export class IndexerDatabase {
         status TEXT NOT NULL,
         evidence_hash TEXT NOT NULL,
         evidence_uri TEXT NOT NULL,
-        approvals_json TEXT NOT NULL,
+        window_end INTEGER NOT NULL,
+        released_amount TEXT NOT NULL,
         updated_ledger INTEGER NOT NULL,
         PRIMARY KEY (campaign_id, milestone_index)
       );
@@ -124,7 +133,9 @@ export class IndexerDatabase {
         campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
         donor TEXT NOT NULL,
         amount TEXT NOT NULL,
-        refunded_amount TEXT NOT NULL DEFAULT '0',
+        shares TEXT NOT NULL,
+        withdrawn TEXT NOT NULL DEFAULT '0',
+        position_epoch INTEGER NOT NULL DEFAULT 0,
         updated_ledger INTEGER NOT NULL,
         PRIMARY KEY (campaign_id, donor)
       );
@@ -140,6 +151,7 @@ export class IndexerDatabase {
       );
       CREATE INDEX IF NOT EXISTS events_ledger_idx ON events(ledger);
       CREATE INDEX IF NOT EXISTS donations_donor_idx ON donations(donor);
+      CREATE INDEX IF NOT EXISTS campaigns_token_idx ON campaigns(token);
 
       CREATE TABLE IF NOT EXISTS indexer_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -195,15 +207,8 @@ export class IndexerDatabase {
           event.payload,
           event.explorerUrl,
         );
-
-      if (inserted.changes === 0) {
-        return false;
-      }
-
-      if (campaign) {
-        this.upsertCampaign(campaign, event.ledger);
-      }
-
+      if (inserted.changes === 0) return false;
+      if (campaign) this.upsertCampaign(campaign, event.ledger);
       this.applyProjection(projection, event.ledger);
       return true;
     })();
@@ -217,20 +222,18 @@ export class IndexerDatabase {
     this.connection
       .prepare(
         `INSERT INTO campaigns (
-           id, org, token, title, description_uri, goal, deadline, threshold,
-           verifiers_json, total_raised, total_released, status, updated_ledger
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           id, org, token, title, description_uri, goal, deadline, window_secs,
+           bond_amount, bond_state, total_raised, total_released, total_withdrawn,
+           held, total_shares, epoch, status, updated_ledger
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           org = excluded.org,
-           token = excluded.token,
-           title = excluded.title,
-           description_uri = excluded.description_uri,
-           goal = excluded.goal,
-           deadline = excluded.deadline,
-           threshold = excluded.threshold,
-           verifiers_json = excluded.verifiers_json,
-           total_raised = excluded.total_raised,
-           total_released = excluded.total_released,
+           org = excluded.org, token = excluded.token, title = excluded.title,
+           description_uri = excluded.description_uri, goal = excluded.goal,
+           deadline = excluded.deadline, window_secs = excluded.window_secs,
+           bond_amount = excluded.bond_amount, bond_state = excluded.bond_state,
+           total_raised = excluded.total_raised, total_released = excluded.total_released,
+           total_withdrawn = excluded.total_withdrawn, held = excluded.held,
+           total_shares = excluded.total_shares, epoch = excluded.epoch,
            status = excluded.status,
            updated_ledger = MAX(campaigns.updated_ledger, excluded.updated_ledger)`,
       )
@@ -242,31 +245,33 @@ export class IndexerDatabase {
         campaign.description_uri,
         campaign.goal,
         campaign.deadline,
-        campaign.threshold,
-        JSON.stringify(campaign.verifiers),
+        campaign.window_secs,
+        campaign.bond_amount,
+        campaign.bond_state,
         campaign.total_raised,
         campaign.total_released,
+        campaign.total_withdrawn,
+        campaign.held,
+        campaign.total_shares,
+        campaign.epoch,
         campaign.status,
         ledger,
       );
 
-    const milestoneStatement = this.connection.prepare(
+    const statement = this.connection.prepare(
       `INSERT INTO milestones (
          campaign_id, milestone_index, description, amount, status,
-         evidence_hash, evidence_uri, approvals_json, updated_ledger
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         evidence_hash, evidence_uri, window_end, released_amount, updated_ledger
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(campaign_id, milestone_index) DO UPDATE SET
-         description = excluded.description,
-         amount = excluded.amount,
-         status = excluded.status,
-         evidence_hash = excluded.evidence_hash,
-         evidence_uri = excluded.evidence_uri,
-         approvals_json = excluded.approvals_json,
+         description = excluded.description, amount = excluded.amount,
+         status = excluded.status, evidence_hash = excluded.evidence_hash,
+         evidence_uri = excluded.evidence_uri, window_end = excluded.window_end,
+         released_amount = excluded.released_amount,
          updated_ledger = MAX(milestones.updated_ledger, excluded.updated_ledger)`,
     );
-
     campaign.milestones.forEach((milestone, index) => {
-      milestoneStatement.run(
+      statement.run(
         campaign.id,
         index,
         milestone.description,
@@ -274,7 +279,8 @@ export class IndexerDatabase {
         milestone.status,
         milestone.evidence_hash,
         milestone.evidence_uri,
-        JSON.stringify(milestone.approvals),
+        milestone.window_end,
+        milestone.released_amount,
         ledger,
       );
     });
@@ -283,162 +289,100 @@ export class IndexerDatabase {
   private applyProjection(projection: EventProjection, ledger: number): void {
     switch (projection.type) {
       case "campaign_created":
+      case "campaign_completed":
+      case "bond_returned":
+      case "bond_slashed":
+      case "campaign_cancelled":
+      case "unknown":
         return;
       case "donated": {
         const previous = this.connection
           .prepare(
-            "SELECT amount FROM donations WHERE campaign_id = ? AND donor = ?",
+            "SELECT amount, shares, position_epoch FROM donations WHERE campaign_id = ? AND donor = ?",
           )
           .get(projection.campaignId, projection.donor) as
-          { amount: string } | undefined;
-        const amount = (
-          BigInt(previous?.amount ?? "0") + BigInt(projection.amount)
-        ).toString();
+          | { amount: string; shares: string; position_epoch: number }
+          | undefined;
         this.connection
           .prepare(
-            `INSERT INTO donations (campaign_id, donor, amount, updated_ledger)
-             VALUES (?, ?, ?, ?)
+            `INSERT INTO donations
+              (campaign_id, donor, amount, shares, withdrawn, position_epoch, updated_ledger)
+             VALUES (?, ?, ?, ?, '0', 0, ?)
              ON CONFLICT(campaign_id, donor) DO UPDATE SET
-               amount = excluded.amount,
-               updated_ledger = MAX(donations.updated_ledger, excluded.updated_ledger)`,
+               amount = ?, shares = ?, updated_ledger = MAX(donations.updated_ledger, ?)`,
           )
-          .run(projection.campaignId, projection.donor, amount, ledger);
-        this.connection
-          .prepare(
-            "UPDATE campaigns SET total_raised = ?, updated_ledger = MAX(updated_ledger, ?) WHERE id = ?",
-          )
-          .run(projection.totalRaised, ledger, projection.campaignId);
+          .run(
+            projection.campaignId,
+            projection.donor,
+            (
+              BigInt(previous?.amount ?? "0") + BigInt(projection.amount)
+            ).toString(),
+            (
+              BigInt(previous?.shares ?? "0") + BigInt(projection.shares)
+            ).toString(),
+            ledger,
+            (
+              BigInt(previous?.amount ?? "0") + BigInt(projection.amount)
+            ).toString(),
+            (
+              BigInt(previous?.shares ?? "0") + BigInt(projection.shares)
+            ).toString(),
+            ledger,
+          );
         return;
       }
       case "evidence_submitted":
         this.connection
           .prepare(
-            `UPDATE milestones
-             SET status = 'EvidenceSubmitted', evidence_hash = ?, evidence_uri = ?,
-                 updated_ledger = MAX(updated_ledger, ?)
+            `UPDATE milestones SET status = 'EvidenceSubmitted', evidence_hash = ?,
+             evidence_uri = ?, window_end = ?, updated_ledger = MAX(updated_ledger, ?)
              WHERE campaign_id = ? AND milestone_index = ?`,
           )
           .run(
             projection.evidenceHash,
             projection.evidenceUri,
+            projection.windowEnd,
             ledger,
             projection.campaignId,
             projection.milestoneIndex,
           );
         return;
-      case "milestone_approved": {
+      case "exited": {
         const row = this.connection
           .prepare(
-            "SELECT approvals_json FROM milestones WHERE campaign_id = ? AND milestone_index = ?",
+            "SELECT shares, withdrawn FROM donations WHERE campaign_id = ? AND donor = ?",
           )
-          .get(projection.campaignId, projection.milestoneIndex) as
-          { approvals_json: string } | undefined;
+          .get(projection.campaignId, projection.donor) as
+          { shares: string; withdrawn: string } | undefined;
         if (!row) return;
-        const approvals = JSON.parse(row.approvals_json) as string[];
-        if (!approvals.includes(projection.verifier)) {
-          approvals.push(projection.verifier);
-        }
         this.connection
           .prepare(
-            `UPDATE milestones
-             SET approvals_json = ?, updated_ledger = MAX(updated_ledger, ?)
-             WHERE campaign_id = ? AND milestone_index = ?`,
+            `UPDATE donations SET shares = ?, withdrawn = ?, updated_ledger = MAX(updated_ledger, ?)
+             WHERE campaign_id = ? AND donor = ?`,
           )
           .run(
-            JSON.stringify(approvals),
+            (BigInt(row.shares) - BigInt(projection.shares)).toString(),
+            (BigInt(row.withdrawn) + BigInt(projection.amount)).toString(),
             ledger,
             projection.campaignId,
-            projection.milestoneIndex,
+            projection.donor,
           );
         return;
       }
       case "milestone_released":
         this.connection
           .prepare(
-            `UPDATE milestones
-             SET status = 'Released', updated_ledger = MAX(updated_ledger, ?)
+            `UPDATE milestones SET status = 'Released', released_amount = ?,
+             updated_ledger = MAX(updated_ledger, ?)
              WHERE campaign_id = ? AND milestone_index = ?`,
           )
-          .run(ledger, projection.campaignId, projection.milestoneIndex);
-        this.addCampaignAmount(
-          projection.campaignId,
-          "total_released",
-          projection.amount,
-          ledger,
-        );
-        return;
-      case "refund_claimed":
-        this.addCampaignAmount(
-          projection.campaignId,
-          "total_refunded",
-          projection.amount,
-          ledger,
-        );
-        this.addDonationRefund(
-          projection.campaignId,
-          projection.donor,
-          projection.amount,
-          ledger,
-        );
-        return;
-      case "campaign_completed":
-        this.connection
-          .prepare(
-            `UPDATE campaigns
-             SET status = 'Completed', total_released = ?,
-                 updated_ledger = MAX(updated_ledger, ?)
-             WHERE id = ?`,
-          )
-          .run(projection.totalReleased, ledger, projection.campaignId);
-        return;
-      case "campaign_cancelled":
-        this.connection
-          .prepare(
-            "UPDATE campaigns SET status = 'Cancelled', updated_ledger = MAX(updated_ledger, ?) WHERE id = ?",
-          )
-          .run(ledger, projection.campaignId);
-        return;
-      case "unknown":
+          .run(
+            projection.amount,
+            ledger,
+            projection.campaignId,
+            projection.milestoneIndex,
+          );
         return;
     }
-  }
-
-  private addCampaignAmount(
-    campaignId: number,
-    column: "total_released" | "total_refunded",
-    amount: string,
-    ledger: number,
-  ): void {
-    const row = this.connection
-      .prepare(`SELECT ${column} AS amount FROM campaigns WHERE id = ?`)
-      .get(campaignId) as { amount: string } | undefined;
-    if (!row) return;
-    const updated = (BigInt(row.amount) + BigInt(amount)).toString();
-    this.connection
-      .prepare(
-        `UPDATE campaigns SET ${column} = ?, updated_ledger = MAX(updated_ledger, ?) WHERE id = ?`,
-      )
-      .run(updated, ledger, campaignId);
-  }
-
-  private addDonationRefund(
-    campaignId: number,
-    donor: string,
-    amount: string,
-    ledger: number,
-  ): void {
-    const row = this.connection
-      .prepare(
-        "SELECT refunded_amount FROM donations WHERE campaign_id = ? AND donor = ?",
-      )
-      .get(campaignId, donor) as { refunded_amount: string } | undefined;
-    if (!row) return;
-    const updated = (BigInt(row.refunded_amount) + BigInt(amount)).toString();
-    this.connection
-      .prepare(
-        `UPDATE donations SET refunded_amount = ?, updated_ledger = MAX(updated_ledger, ?)
-         WHERE campaign_id = ? AND donor = ?`,
-      )
-      .run(updated, ledger, campaignId, donor);
   }
 }

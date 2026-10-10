@@ -21,11 +21,13 @@ services:
       - key: NETWORK_PASSPHRASE
         value: Test SDF Network ; September 2015
       - key: CONTRACT_ID
+        value: ""
+      - key: LEGACY_CONTRACT_ID
         value: CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI
       - key: PORT
         value: "10000"
       - key: DATABASE_URL
-        value: /app/data/app.db
+        value: /app/data/clearfun-v2.db
       - key: EVIDENCE_STORAGE_DIR
         value: /app/data/evidence
       - key: ALLOWED_ORIGINS

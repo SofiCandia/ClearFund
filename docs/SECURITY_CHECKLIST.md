@@ -1,73 +1,55 @@
-# Checklist de seguridad del contrato
+# Checklist de seguridad
 
-Revisión de código y pruebas existente para el prototipo Soroban de Testnet.
-Esto no es una auditoría externa, no garantiza ausencia de vulnerabilidades y
-no autoriza custodiar valor real. Referencia: [código del contrato](../contracts/donations/src/lib.rs)
-y [pruebas del contrato](../contracts/donations/src/test.rs).
+Esta revisión documenta controles de código y tests; no sustituye una auditoría
+externa ni habilita fondos de valor. El despliegue es para Testnet.
 
-## Controles revisados
+## Controles del contrato nuevo
 
-| Control                                                                   | Estado   | Evidencia / nota                                                                                                          |
-| ------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Inicialización de una sola vez y autorización del admin                   | Revisado | `initialize` falla si ya hay admin y llama `require_auth`; test de autorización faltante.                                 |
-| Autorización de organización al crear campaña y presentar evidencia       | Revisado | `create_campaign` y `submit_evidence` requieren auth de la organización.                                                  |
-| Autorización de donante y verificador                                     | Revisado | `donate`/`claim_refund` requieren auth del donante; aprobación requiere auth del verificador.                             |
-| Umbral M-de-N, verificadores únicos y separación organización/verificador | Revisado | Validaciones de creación y tests de umbral, doble voto y verificador inválido.                                            |
-| Montos positivos, suma de objetivo y cálculo de reembolso checked         | Revisado | Se usan operaciones checked y errores explícitos de overflow.                                                             |
-| Orden de hitos y no liberar dos veces                                     | Revisado | Solo evidencia de hito pendiente; se requiere liberar los anteriores; los tests cubren orden y doble liberación.          |
-| Estado escrito antes de transferencias de token                           | Revisado | El helper de liberación y donación actualizan storage antes de invocar el token; Soroban ejecuta atómicamente la llamada. |
-| Eventos requeridos y datos indexables                                     | Revisado | Eventos tipados para creación, donación, evidencia, aprobaciones, liberación, reembolso y estados terminales.             |
-| TTL de storage persistente                                                | Revisado | Helpers extienden TTL de campañas, donaciones y marcadores; instance storage se extiende al leer/escribir count/campaign. |
-| Pruebas locales de flujos negativos                                       | Revisado | `cargo test` cubre flujo feliz, umbral 2-de-3, autorización, reembolso, fechas y estados.                                 |
-| IDs, datos de demo y claves                                               | Revisado | El seed no imprime semillas; `.env` está ignorado. Los importes del seed se mantienen por debajo del objetivo.            |
+| Control | Estado | Evidencia |
+| --- | --- | --- |
+| Inicialización única y autenticada | ✅ Implementado | BPS `0..=5000`, dirección initializer explícita autenticada; no hay admin posterior. |
+| Auth de cada actor | ✅ Implementado | Organización y donantes autentican sus acciones; liberación es pública intencionalmente. |
+| Estado antes de transferencias | ✅ Implementado | Storage se actualiza antes de cada llamada al token; Soroban proporciona rollback atómico. |
+| Aritmética monetaria checked | ✅ Implementado | Sumas, restas y productos checked; bond con redondeo hacia arriba. |
+| Prevención del excedente | ✅ Resuelto | `ExceedsGoal` impide que `held + total_released + aporte` supere la meta. |
+| Donación de la organización | ✅ Resuelto | `OrganizationCannotDonate` impide financiar su campaña desde la wallet organizadora. |
+| Participaciones y salida individual | ✅ Implementado | Valor `shares*held/total_shares`, quema individual y reset de época al llegar H a cero. |
+| Ventana, orden de hitos y NotFunded | ✅ Implementado | Evidencia solo para el siguiente hito financiado; retiro bloqueado por `ReleasePending`. |
+| TTL de persistent storage | ✅ Implementado | Cada entrada persistent leída o escrita extiende TTL; count extiende instance TTL. |
+| Eventos nuevos e idempotencia | ✅ Implementado | Indexer filtra el contrato activo, guarda hash/link y deduplica por event ID. |
+| Datos legacy separados | ✅ Implementado | `LEGACY_CONTRACT_ID`; DB activa nueva y sin campañas legacy. |
+| Secretos en scripts | ✅ Controlado | Los scripts no imprimen valores de `.env`; seed y smoke solo imprimen hash/link y estado. |
 
-## Pendiente bloqueante
+## Limitaciones explícitas
 
-| Severidad          | Hallazgo                                                                                                                                                                                                                                                                            | Riesgo                                                                  | Recomendación                                                                                                                                                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ALTO — abierto** | `donate` aumenta `total_raised` sin limitarlo a `goal`. La liberación marca `Completed` al llegar a `total_released == goal`; `claim_refund` rechaza campañas `Completed`. Si se recauda por encima del objetivo y se liberan todos los hitos, el excedente puede quedar bloqueado. | Pérdida de acceso a excedente de donantes en el contrato ya desplegado. | Antes de usar fondos de valor, rechazar aportes por encima de `goal - total_raised`, o implementar una política explícita de excedente/reembolso; añadir pruebas de exceso y desplegar una nueva versión revisada. La UI sola no es suficiente. |
+- El silencio durante la ventana pública equivale a aceptar: al vencer, cualquier
+  cuenta puede liberar el hito.
+- Una evidencia falsa, pero convincente, puede engañar. El hash acredita
+  integridad de bytes, no veracidad de lo descrito.
+- No hay verificadores, admin, aprobaciones, ni proceso de disputas; por ello
+  tampoco existe un veto humano on-chain.
+- La garantía se limita al BPS fijado al inicializar (máximo 50%) y no equivale
+  a cubrir una estafa grande.
+- Las divisiones enteras truncan; el polvo puede ser irrecuperable. Cada
+  operación pierde menos de una unidad base por división, pero pérdidas
+  acumuladas requieren revisar la secuencia de operaciones.
+- Un token no estándar puede comportarse distinto; el contrato no aplica una
+  allowlist de SAC/token.
+- SQLite, almacenamiento local de evidencia, RPC público y Testnet no ofrecen
+  garantías de producción. Una interrupción mayor que la retención del RPC
+  exige una estrategia de recuperación.
+- El deploy y el smoke-test nuevos siguen pendientes hasta disponer de una
+  cuenta de despliegue financiada y credenciales de las cuentas demo.
 
-El seed de Fase 6 mantiene sus aportes iguales o inferiores a cada meta para no
-activar este caso; eso no corrige el comportamiento del contrato en Testnet.
+## Antes de usar fondos de valor
 
-## Limitaciones que requieren decisión
-
-- Los reembolsos individuales usan división entera hacia abajo. El redondeo
-  puede dejar residuos pequeños no reclamables; definir quién puede recuperar
-  residuos o documentar el dust antes de producción.
-- El primer reembolso marca la campaña `Expired`. Revisar la UX cuando varios
-  donantes reclaman en diferentes transacciones y validar orden de reclamación
-  y balance global con tests adicionales.
-- El contrato recibe direcciones de contratos de token, pero no mantiene una
-  allowlist de activos. Una campaña puede elegir cualquier contrato compatible;
-  una futura política puede restringir emisores/SACs.
-- El hash prueba integridad respecto del archivo presentado, no que la factura
-  sea auténtica ni que el gasto sea elegible. La independencia del verificador,
-  privacidad de documentos y proceso de disputa son operativos.
-- Las garantías de TTL dependen de acceso/extensión y reglas de rent del
-  protocolo; verificar campañas inactivas y persistencia antes de operar años.
-- La atomicidad del host protege el rollback de transferencias fallidas, pero
-  requiere volver a validar con la versión exacta del SDK/protocolo desplegada.
-
-## Antes de una red principal
-
-- [ ] Corregir y testear la sobre-recaudación en contrato; desplegar nueva
-      dirección, verificar el WASM/hash y actualizar backend/bindings.
-- [ ] Especificar y probar dust de reembolsos, expiración y campañas parciales.
-- [ ] Auditar externamente contrato, autorización Soroban, storage/TTL y
-      compatibilidad de tokens.
-- [ ] Ejecutar fuzz/property tests para aritmética, secuencias de estados,
-      reintentos RPC y concurrencia transaccional.
-- [ ] Revisar SACs/issuers permitidos y comportamiento de tokens no estándar.
-- [ ] Probar recuperación del indexer ante retención RPC insuficiente,
-      reorg/checkpoint y restauración SQLite.
-- [ ] Endurecer almacenamiento de evidencia, acceso, retención, backups y
-      tratamiento de datos personales.
-- [ ] Limitar relay/abuso, monitorizar cuotas y configurar CORS, logs y alertas.
-- [ ] Completar revisión legal/compliance y preparar un plan de respuesta a
-      incidentes y claves administrativas.
-
-**Conclusión:** el código implementa controles básicos y pasa su suite de
-pruebas, pero el pendiente de fondos sobre-recaudados hace que el contrato no
-deba recibir fondos de valor. El despliegue actual es exclusivamente de demo
-en Stellar Testnet.
+- [ ] Desplegar contrato nuevo desde una cuenta protegida; inicializar BPS y
+      verificar la transacción de inicialización.
+- [ ] Ejecutar smoke y seed con cuentas desechables de Testnet.
+- [ ] Auditoría externa del contrato, aritmética, authorization entries,
+      tokens admitidos y TTL.
+- [ ] Añadir pruebas de propiedades/fuzzing para reparto, épocas, polvo y
+      concurrencia de retiros/liberaciones.
+- [ ] Desplegar backend con almacenamiento durable, copias de seguridad,
+      monitorización, límites de relay y CORS exacto.
+- [ ] Revisar privacidad, evidencia, marco legal y respuesta a incidentes.

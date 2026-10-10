@@ -1,198 +1,109 @@
-# Despliegue y smoke test en Stellar Testnet
+# Despliegue y operación Testnet
 
-## Requisitos y configuración
+## Antes del despliegue
 
-1. Instala Rust con `wasm32v1-none`, Stellar CLI, Node.js 20+ y pnpm.
-2. Copia `.env.example` a `.env` y no compartas ni confirmes ese archivo.
-3. Configura `DEPLOYER_SECRET` en tu gestor de secretos o en el entorno del
-   proceso. Debe ser una cuenta financiada en Testnet. El script también carga
-   valores no vacíos desde `.env`.
+- Rust 1.84+, target `wasm32v1-none`, Stellar CLI, Node.js 20+ y pnpm.
+- Una cuenta deployer financiada con XLM de Testnet.
+- Cuenta org y dos cuentas donantes financiadas para smoke/seed.
+- `.env` local ignorado por Git. Nunca imprimir o pegar sus secretos.
 
-En PowerShell:
+El `.env` actual conserva el contrato previo en `LEGACY_CONTRACT_ID` y deja
+`CONTRACT_ID` vacío mientras no se confirme un nuevo despliegue. El indexer usa
+una SQLite nueva (`./data/clearfun-v2.db`) y `CONTRACT_ID` como único filtro;
+las campañas 1–4 del contrato anterior no entran en esta base.
 
-```powershell
-Copy-Item .env.example .env
-$env:DEPLOYER_SECRET = "SC...secret-de-testnet"
-```
+## Build, bindings y deploy
 
-En Bash:
+Los dos scripts ejecutan `stellar contract build`, regeneran las bindings
+TypeScript desde el WASM y compilan SDK/scripts, despliegan un contrato nuevo y
+ejecutan `initialize` con `bond_bps=1000` y la dirección autenticada derivada
+de `DEPLOYER_SECRET`.
 
-```bash
-cp .env.example .env
-export DEPLOYER_SECRET='SC...secret-de-testnet'
-```
-
-No incluyas una clave real en archivos versionados. `.env` está ignorado por
-Git; `DEPLOYER_SECRET` también puede proveerse solo como variable del proceso.
-
-## Compilar, desplegar e inicializar
-
-En Windows:
+Windows:
 
 ```powershell
-.\scripts\deploy.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
 ```
 
-En Bash (Linux, macOS, Git Bash o WSL):
+Bash:
 
 ```bash
 bash scripts/deploy.sh
 ```
 
-Ambos scripts:
+El script coloca el `CONTRACT_ID` nuevo en `.env`; el valor anterior queda como
+`LEGACY_CONTRACT_ID`. La identidad del initializer no obtiene permisos
+posteriores. Si el proceso falla antes de la actualización de `.env`, no
+consideres el despliegue completo: verifica el ID y la inicialización en
+Stellar Expert antes de reintentar.
 
-1. Construyen las bindings y ejecutan `stellar contract build` (la CLI optimiza
-   el WASM).
-2. Despliegan `target/wasm32v1-none/release/donations.wasm` en Testnet y crean
-   el alias local `clearfun-donations`.
-3. Inicializan el contrato usando la dirección pública derivada de
-   `DEPLOYER_SECRET`.
-4. Actualizan únicamente `CONTRACT_ID` en `.env`; no escriben la clave secreta.
-
-El comando de despliegue imprime el hash/link del upload y del despliegue. El
-contrato se puede consultar con `https://stellar.expert/explorer/testnet/contract/<CONTRACT_ID>`.
-
-## Stellar Asset Contracts: XLM y USDC de prueba
-
-En Windows:
+Bindings manuales:
 
 ```powershell
-.\scripts\setup-tokens.ps1
-```
-
-En Bash:
-
-```bash
-bash scripts/setup-tokens.sh
-```
-
-El script calcula el ID del SAC nativo XLM y consulta `name` en Testnet. Si ya
-existe, lo reutiliza; si no, intenta desplegarlo. Guarda `TOKEN_XLM_ID` en
-`.env`. En la Testnet usada para esta fase, el SAC nativo ya está desplegado.
-
-### Crear y emitir un activo de prueba `USDC`
-
-Un activo clásico necesita un issuer y trustlines para cuentas receptoras.
-Estos comandos crean un issuer local del CLI, crean la trustline de la cuenta
-`clearfun-testnet` y emiten 10 unidades USDC (100,000,000 stroops, dado que los
-activos usan siete decimales):
-
-```powershell
-stellar keys generate clearfun-usdc-issuer --secure-store
-stellar keys fund clearfun-usdc-issuer --network testnet
-stellar tx new change-trust --source-account clearfun-testnet --network testnet --line USDC:clearfun-usdc-issuer
-stellar tx new payment --source-account clearfun-usdc-issuer --network testnet --destination clearfun-testnet --asset USDC:clearfun-usdc-issuer --amount 100000000
-$env:USDC_ISSUER_ADDRESS = (stellar keys public-key clearfun-usdc-issuer)
-stellar contract asset deploy --source-account clearfun-testnet --network testnet --asset "USDC:$env:USDC_ISSUER_ADDRESS"
-.\scripts\setup-tokens.ps1
-```
-
-`USDC` aquí es un activo de prueba emitido por el issuer local, no el USDC
-oficial de Circle. Para la variante Bash, exporta la dirección pública del
-issuer y ejecuta el script de configuración:
-
-```bash
-stellar keys generate clearfun-usdc-issuer --secure-store
-stellar keys fund clearfun-usdc-issuer --network testnet
-stellar tx new change-trust --source-account clearfun-testnet --network testnet --line USDC:clearfun-usdc-issuer
-stellar tx new payment --source-account clearfun-usdc-issuer --network testnet --destination clearfun-testnet --asset USDC:clearfun-usdc-issuer --amount 100000000
-export USDC_ISSUER_ADDRESS="$(stellar keys public-key clearfun-usdc-issuer)"
-stellar contract asset deploy --source-account clearfun-testnet --network testnet --asset "USDC:$USDC_ISSUER_ADDRESS"
-bash scripts/setup-tokens.sh
-```
-
-`setup-tokens` deriva y valida el ID del SAC `USDC:<issuer>`, lo despliega si
-no responde y persiste `TOKEN_USDC_ID`. El emisor puede necesitar habilitar la
-trustline de cada cuenta receptora antes de emitir o transferir el activo.
-
-## Generar el paquete de bindings
-
-Desde la raíz, con el WASM compilado:
-
-```powershell
+stellar contract build --package donations
 stellar contract bindings typescript --wasm target\wasm32v1-none\release\donations.wasm --output-dir packages\sdk --overwrite
-pnpm install
 pnpm --filter @clearfun/sdk build
+pnpm --filter @clearfun/scripts build
 ```
 
-La plantilla generada por Stellar CLI reemplaza `packages/sdk/package.json` y
-`tsconfig.json`; después de regenerar, restaura el nombre `@clearfun/sdk` y la
-configuración workspace tipada. Luego compila el monorepo:
+## Pruebas
 
 ```powershell
+cargo test -p donations
+stellar contract build --package donations
 pnpm build
+pnpm test
+pnpm lint
+pnpm format:check
 ```
 
-## Ejecutar el smoke test real de Testnet
-
-El smoke test usa el SDK generado y requiere cuentas distintas para admin,
-organización, donante y los dos verificadores. Financia cinco cuentas en
-Testnet antes de ejecutarlo. Proporciona sus claves al proceso desde un gestor
-de secretos o desde el entorno temporal de la terminal; no las agregues a Git.
-Secure Store no permite extraer las claves necesarias para el firmante local
-del SDK.
-
-Las variables requeridas son:
-
-```text
-DEPLOYER_SECRET
-SMOKE_ORG_SECRET
-SMOKE_DONOR_SECRET
-SMOKE_VERIFIER_1_SECRET
-SMOKE_VERIFIER_2_SECRET
-```
-
-`CONTRACT_ID` y `TOKEN_XLM_ID` se leen desde `.env`. Configura las cinco
-variables secretas en el entorno del proceso o en `.env` local protegido. Si
-tu gestor de secretos ya las proporciona al proceso, ejecuta:
+El smoke-test usa `CONTRACT_ID`, `TOKEN_XLM_ID`,
+`DEPLOYER_SECRET`, `SMOKE_ORG_SECRET`, `SMOKE_DONOR_SECRET` y
+`SMOKE_DONOR_2_SECRET`. Crea dos hitos de 100.000 stroops, abre ventanas de
+60 segundos, permite la salida de un donante y prueba ambas liberaciones y la
+garantía. Imprime hashes y links de Stellar Expert, nunca secretos.
 
 ```powershell
 pnpm --filter @clearfun/scripts smoke-test
 ```
 
-El script crea una campaña nueva de Testnet con un hito, dona XLM, registra un
-SHA-256 de evidencia, aprueba con dos verificadores y comprueba en el SAC que
-la organización recibió exactamente el monto liberado. Imprime el hash y enlace
-de Stellar Expert de cada transacción.
-
-## Ejecutar el indexer Soroban
-
-El backend inicia el indexer automáticamente cuando `.env` tiene un
-`CONTRACT_ID` no vacío. El índice usa SQLite en `DATABASE_URL` y crea sus
-tablas si todavía no existen. La configuración del polling es:
-
-```text
-INDEXER_POLL_INTERVAL_MS=5000
-INDEXER_START_LEDGER=0
-```
-
-Con `INDEXER_START_LEDGER=0`, el primer arranque consulta el ledger más antiguo
-que retenga el RPC y avanza en bloques; para limitar el backfill, configura un
-ledger explícito, por ejemplo el del despliegue del contrato. Stellar RPC
-mantiene una ventana de retención acotada: si el proceso cae tanto tiempo que
-el ledger guardado queda fuera de esa ventana, el indexer registra el error y
-reintenta sin saltarse eventos. Para recuperar ese caso se necesita un RPC con
-retención/archive apropiada o un reinicio explícito con un punto inicial
-disponible.
-
-Inicia el backend desde la raíz del monorepo:
+El seed necesita `SMOKE_ORG_SECRET`, `SMOKE_DONOR_SECRET`,
+`SMOKE_DONOR_2_SECRET` y `SMOKE_DONOR_3_SECRET`. Crea tres campañas con ventana
+de 90 segundos: una completada tras salida individual, una mitad financiada
+con ventana abierta y una recién creada.
 
 ```powershell
-pnpm --filter @clearfun/backend build
-pnpm --filter @clearfun/backend start
+pnpm --filter @clearfun/scripts seed
 ```
 
-El proceso consulta `getEvents`, persiste los eventos crudos y los proyecta a
-`campaigns`, `milestones` y `donations`. El identificador estable del evento es
-la clave primaria; escritura del evento y sus proyecciones es transaccional.
-Después de cada bloque consulta `get_campaign` para completar campos que no
-están en los eventos y reconciliar el estado actual. Pino registra el avance y
-los reintentos con backoff.
+Seed y smoke generan transacciones públicas, gastan fees/tokens y no son
+idempotentes en el sentido de crear un mismo ID; cada ejecución crea campañas
+nuevas.
 
-## Direcciones verificadas durante Fase 2
+## API e indexer
 
-- Contrato: `CAFXICHEYMOI42VUO3AH7UJ5DYHJ6GGPHDYVH2RS6ITR42JCM5MQI5FI`
-- SAC XLM nativo: `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`
+Configura `CONTRACT_ID` con el ID nuevo, `NETWORK_PASSPHRASE`,
+`SOROBAN_RPC_URL` y una ruta nueva `DATABASE_URL`. La API inicia el indexer solo
+si hay un `CONTRACT_ID` no vacío. No uses el ID legacy como valor activo.
 
-`docs/PHASE_2_DONE.md` registra los hashes y enlaces de las transacciones
-reales desplegadas y del smoke test.
+```powershell
+pnpm --filter @clearfun/backend dev
+```
+
+El indexer filtra eventos por contrato y deduplica cada evento mediante su ID
+RPC. Después de cada rango, sincroniza `get_campaign`; las posiciones
+individuales se consultan mediante `get_position` cuando el índice detecta una
+época antigua. Un cursor fuera de la retención RPC requiere un endpoint archive
+o recuperación operativa; no se salta eventos silenciosamente.
+
+Despliegue público del backend, CORS y almacenamiento persistente requieren
+configuración adicional. No usar `ALLOWED_ORIGINS=*` en producción. Swagger se
+publica en `/docs`, OpenAPI JSON en `/docs/openapi.json`.
+
+## Estado del despliegue nuevo
+
+El ID previo se preservó localmente como legacy. El deploy nuevo y smoke real
+están pendientes si no se dispone de `DEPLOYER_SECRET` financiado. No se debe
+presentar un hash, ID de contrato, respuesta RPC o enlace de transacción
+supuesto como verificado. Actualiza `docs/PROGRESS.md` y
+`docs/PHASE_8_TO_11_DONE.md` con los valores reales al terminar la operación.

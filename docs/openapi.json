@@ -302,14 +302,17 @@
                           "description_uri",
                           "goal",
                           "deadline",
-                          "threshold",
-                          "verifiers",
+                          "window_secs",
+                          "bond_amount",
+                          "bond_state",
                           "total_raised",
                           "total_released",
-                          "total_refunded",
+                          "total_withdrawn",
+                          "held",
                           "status",
                           "progress_percent",
-                          "funds_held"
+                          "funded",
+                          "max_donation"
                         ],
                         "properties": {
                           "id": {
@@ -340,15 +343,23 @@
                             "type": "integer",
                             "description": "Unix timestamp in seconds."
                           },
-                          "threshold": {
+                          "window_secs": {
                             "type": "integer",
-                            "minimum": 1
+                            "minimum": 60,
+                            "maximum": 2592000
                           },
-                          "verifiers": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
+                          "bond_amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "bond_state": {
+                            "type": "string",
+                            "enum": [
+                              "Held",
+                              "Returned",
+                              "Slashed"
+                            ]
                           },
                           "total_raised": {
                             "type": "string",
@@ -360,7 +371,12 @@
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
                           },
-                          "total_refunded": {
+                          "total_withdrawn": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "held": {
                             "type": "string",
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -378,7 +394,12 @@
                             "type": "number",
                             "minimum": 0
                           },
-                          "funds_held": {
+                          "funded": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "max_donation": {
                             "type": "string",
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -605,7 +626,7 @@
     },
     "/campaigns/{id}": {
       "get": {
-        "summary": "Get a campaign, milestones, verifiers, and escrow progress",
+        "summary": "Get campaign details, milestones, and held-fund progress",
         "tags": [
           "Campaigns"
         ],
@@ -639,14 +660,17 @@
                         "description_uri",
                         "goal",
                         "deadline",
-                        "threshold",
-                        "verifiers",
+                        "window_secs",
+                        "bond_amount",
+                        "bond_state",
                         "total_raised",
                         "total_released",
-                        "total_refunded",
+                        "total_withdrawn",
+                        "held",
                         "status",
                         "progress_percent",
-                        "funds_held"
+                        "funded",
+                        "max_donation"
                       ],
                       "properties": {
                         "id": {
@@ -677,15 +701,23 @@
                           "type": "integer",
                           "description": "Unix timestamp in seconds."
                         },
-                        "threshold": {
+                        "window_secs": {
                           "type": "integer",
-                          "minimum": 1
+                          "minimum": 60,
+                          "maximum": 2592000
                         },
-                        "verifiers": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
+                        "bond_amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d+$",
+                          "description": "Integer amount in token base units; decimal string avoids precision loss."
+                        },
+                        "bond_state": {
+                          "type": "string",
+                          "enum": [
+                            "Held",
+                            "Returned",
+                            "Slashed"
+                          ]
                         },
                         "total_raised": {
                           "type": "string",
@@ -697,7 +729,12 @@
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
                         },
-                        "total_refunded": {
+                        "total_withdrawn": {
+                          "type": "string",
+                          "pattern": "^-?\\d+$",
+                          "description": "Integer amount in token base units; decimal string avoids precision loss."
+                        },
+                        "held": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -715,7 +752,12 @@
                           "type": "number",
                           "minimum": 0
                         },
-                        "funds_held": {
+                        "funded": {
+                          "type": "string",
+                          "pattern": "^-?\\d+$",
+                          "description": "Integer amount in token base units; decimal string avoids precision loss."
+                        },
+                        "max_donation": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -735,7 +777,8 @@
                               "status",
                               "evidence_hash",
                               "evidence_uri",
-                              "approvals"
+                              "window_end",
+                              "released_amount"
                             ],
                             "properties": {
                               "index": {
@@ -764,11 +807,13 @@
                               "evidence_uri": {
                                 "type": "string"
                               },
-                              "approvals": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
+                              "window_end": {
+                                "type": "integer"
+                              },
+                              "released_amount": {
+                                "type": "string",
+                                "pattern": "^-?\\d+$",
+                                "description": "Integer amount in token base units; decimal string avoids precision loss."
                               }
                             }
                           }
@@ -971,7 +1016,7 @@
     },
     "/campaigns/{id}/donations": {
       "get": {
-        "summary": "List donors and donation amounts for a campaign",
+        "summary": "List donor positions and current withdrawable amounts",
         "tags": [
           "Campaigns"
         ],
@@ -1028,7 +1073,10 @@
                           "campaign_id",
                           "donor",
                           "amount",
-                          "refunded_amount",
+                          "shares",
+                          "current_value",
+                          "withdrawn",
+                          "withdrawable",
                           "updated_ledger"
                         ],
                         "properties": {
@@ -1043,10 +1091,23 @@
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
                           },
-                          "refunded_amount": {
+                          "shares": {
                             "type": "string",
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "current_value": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "withdrawn": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "withdrawable": {
+                            "type": "boolean"
                           },
                           "updated_ledger": {
                             "type": "integer"
@@ -1586,7 +1647,7 @@
     },
     "/campaigns/{id}/audit": {
       "get": {
-        "summary": "Compare indexed accounting with live contract and token state",
+        "summary": "Compare one campaign's indexed totals with its on-chain getters",
         "tags": [
           "Audit"
         ],
@@ -1623,7 +1684,7 @@
                     "accounting": {
                       "type": "object",
                       "properties": {
-                        "total_incoming": {
+                        "total_donated": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -1633,17 +1694,12 @@
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
                         },
-                        "total_refunded": {
+                        "total_withdrawn": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
                         },
-                        "total_outgoing": {
-                          "type": "string",
-                          "pattern": "^-?\\d+$",
-                          "description": "Integer amount in token base units; decimal string avoids precision loss."
-                        },
-                        "expected_contract_balance": {
+                        "held": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
@@ -1663,10 +1719,307 @@
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
                         },
-                        "contract_balance": {
+                        "total_withdrawn": {
                           "type": "string",
                           "pattern": "^-?\\d+$",
                           "description": "Integer amount in token base units; decimal string avoids precision loss."
+                        },
+                        "held": {
+                          "type": "string",
+                          "pattern": "^-?\\d+$",
+                          "description": "Integer amount in token base units; decimal string avoids precision loss."
+                        }
+                      }
+                    },
+                    "consistent": {
+                      "type": "boolean"
+                    },
+                    "verified_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/solvency": {
+      "get": {
+        "summary": "Compare each token contract balance with all campaign-held funds and bonds",
+        "tags": [
+          "Audit"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tokens",
+                    "consistent",
+                    "verified_at"
+                  ],
+                  "properties": {
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "token",
+                          "contract_balance",
+                          "expected_balance",
+                          "campaign_count",
+                          "campaigns",
+                          "consistent"
+                        ],
+                        "properties": {
+                          "token": {
+                            "type": "string"
+                          },
+                          "contract_balance": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "expected_balance": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "campaign_count": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "campaigns": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "campaign_id",
+                                "held",
+                                "bond_amount",
+                                "bond_state"
+                              ],
+                              "properties": {
+                                "campaign_id": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "held": {
+                                  "type": "string",
+                                  "pattern": "^-?\\d+$",
+                                  "description": "Integer amount in token base units; decimal string avoids precision loss."
+                                },
+                                "bond_amount": {
+                                  "type": "string",
+                                  "pattern": "^-?\\d+$",
+                                  "description": "Integer amount in token base units; decimal string avoids precision loss."
+                                },
+                                "bond_state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "Held",
+                                    "Returned",
+                                    "Slashed"
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "consistent": {
+                            "type": "boolean"
+                          }
                         }
                       }
                     },
@@ -1928,7 +2281,10 @@
                           "campaign_id",
                           "donor",
                           "amount",
-                          "refunded_amount",
+                          "shares",
+                          "current_value",
+                          "withdrawn",
+                          "withdrawable",
                           "updated_ledger"
                         ],
                         "properties": {
@@ -1943,10 +2299,23 @@
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
                           },
-                          "refunded_amount": {
+                          "shares": {
                             "type": "string",
                             "pattern": "^-?\\d+$",
                             "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "current_value": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "withdrawn": {
+                            "type": "string",
+                            "pattern": "^-?\\d+$",
+                            "description": "Integer amount in token base units; decimal string avoids precision loss."
+                          },
+                          "withdrawable": {
+                            "type": "boolean"
                           },
                           "updated_ledger": {
                             "type": "integer"
@@ -2463,18 +2832,11 @@
                       "additionalProperties": false
                     }
                   },
-                  "verifiers": {
-                    "minItems": 1,
-                    "maxItems": 32,
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "threshold": {
+                  "window_seconds": {
+                    "default": 259200,
                     "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 32
+                    "minimum": 60,
+                    "maximum": 2592000
                   },
                   "deadline": {
                     "type": "string",
@@ -2488,8 +2850,7 @@
                   "title",
                   "description_uri",
                   "milestones",
-                  "verifiers",
-                  "threshold",
+                  "window_seconds",
                   "deadline"
                 ],
                 "additionalProperties": false
@@ -2506,11 +2867,8 @@
                     "amount": "100000"
                   }
                 ],
-                "verifiers": [
-                  "GC3XAM7HEDTQVIPPZE3C7KBCBZYKR3XSTKWUUFDTZW55YNKDNOCWDCAH"
-                ],
-                "threshold": 1,
-                "deadline": "2000000000"
+                "window_seconds": 259200,
+                "deadline": "1800000000"
               }
             }
           }
@@ -3255,7 +3613,234 @@
     },
     "/tx/approve-milestone": {
       "post": {
-        "summary": "Assemble a simulated, unsigned milestone approval transaction",
+        "summary": "Removed: milestones no longer require third-party approvals",
+        "tags": [
+          "Transactions"
+        ],
+        "responses": {
+          "400": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "This approval workflow has been removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "This approval workflow has been removed."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tx/withdraw": {
+      "post": {
+        "summary": "Assemble an unsigned transaction to withdraw the donor position",
         "tags": [
           "Transactions"
         ],
@@ -3269,25 +3854,19 @@
                   "source": {
                     "type": "string"
                   },
-                  "verifier": {
+                  "donor": {
                     "type": "string"
                   },
                   "campaign_id": {
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 4294967295
-                  },
-                  "milestone_index": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 31
                   }
                 },
                 "required": [
                   "source",
-                  "verifier",
-                  "campaign_id",
-                  "milestone_index"
+                  "donor",
+                  "campaign_id"
                 ],
                 "additionalProperties": false
               }
@@ -3512,7 +4091,7 @@
     },
     "/tx/claim-refund": {
       "post": {
-        "summary": "Assemble a simulated, unsigned donation refund transaction",
+        "summary": "Deprecated alias for /tx/withdraw",
         "tags": [
           "Transactions"
         ],
@@ -3538,6 +4117,503 @@
                 "required": [
                   "source",
                   "donor",
+                  "campaign_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "deprecated": true,
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "xdr",
+                    "signed"
+                  ],
+                  "properties": {
+                    "xdr": {
+                      "type": "string",
+                      "description": "Base64 unsigned transaction envelope XDR."
+                    },
+                    "signed": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tx/release-milestone": {
+      "post": {
+        "summary": "Assemble a public milestone release transaction",
+        "tags": [
+          "Transactions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "campaign_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "milestone_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31
+                  }
+                },
+                "required": [
+                  "source",
+                  "campaign_id",
+                  "milestone_index"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "xdr",
+                    "signed"
+                  ],
+                  "properties": {
+                    "xdr": {
+                      "type": "string",
+                      "description": "Base64 unsigned transaction envelope XDR."
+                    },
+                    "signed": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Standardized API error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "description": "Standardized API error response."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tx/reclaim-bond": {
+      "post": {
+        "summary": "Assemble an unsigned creator bond reclamation transaction",
+        "tags": [
+          "Transactions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 4294967295
+                  }
+                },
+                "required": [
                   "campaign_id"
                 ],
                 "additionalProperties": false

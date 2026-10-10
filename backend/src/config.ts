@@ -8,7 +8,7 @@ const configSchema = z.object({
   CONTRACT_ID: z.string().default(""),
   DEPLOYER_SECRET: z.string().default(""),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  DATABASE_URL: z.string().min(1).default("./data/app.db"),
+  DATABASE_URL: z.string().min(1).default("./data/clearfun-v2.db"),
   ADMIN_API_KEY: z.string().default(""),
   INDEXER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(5000),
   INDEXER_START_LEDGER: z.coerce.number().int().min(0).default(0),

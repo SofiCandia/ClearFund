@@ -1,135 +1,102 @@
-# Arquitectura de ClearFun
+# Arquitectura de ClearFund
 
-ClearFun combina custodia programable por contrato con una capa de consulta
-fuera de cadena. El diseño actual es un prototipo para Stellar Testnet.
+ClearFund usa custodia programable por contrato y una capa de consulta
+indexada. Esta versión es un prototipo para Stellar Testnet; no es una entidad
+financiera ni está auditada para custodiar valor real.
 
 ## Componentes
 
 ```mermaid
 flowchart TB
-  subgraph Actors[Actores]
-    Donor[Donante]
-    Org[Organización]
-    Verifiers[Verificadores M-de-N]
-    Wallet[Freighter / wallet compatible]
-  end
-  subgraph Stellar[Stellar Testnet]
-    Contract[Donations Soroban contract]
-    Token[SAC de XLM / activo emitido]
-    Contract -->|transfer escrow y release/refund| Token
-    Contract -->|eventos| RPC[Soroban RPC]
-  end
-  subgraph Service[Backend]
-    API[Fastify + Zod]
-    Indexer[Event indexer]
-    DB[(SQLite)]
-    Storage[StorageProvider / disco]
-    Indexer --> DB
-    API --> DB
-    API --> Storage
-  end
-  Donor --> Wallet
-  Org --> Wallet
-  Verifiers --> Wallet
-  Wallet -->|firma local| API
-  API -->|simulación / envío XDR firmado| RPC
-  RPC --> Contract
-  RPC --> Indexer
+  Donors[Donantes] --> Wallet[Wallet Stellar]
+  Org[Organización] --> Wallet
+  Wallet -->|firma local| API[Fastify REST API]
+  API -->|XDR firmado| RPC[Soroban RPC]
+  RPC --> Contract[Contrato de donaciones]
+  Contract --> Token[SAC / token Soroban]
+  Contract -->|eventos del contrato nuevo| Indexer[Indexer]
+  Indexer --> DB[(SQLite nueva)]
+  API --> DB
+  API --> Evidence[StorageProvider]
+  Explorer[Stellar Expert] --- Contract
 ```
 
-## Flujo de fondos
+El indexer filtra por `CONTRACT_ID` activo. La base SQLite configurada para
+esta versión es nueva; no se reutilizan las campañas 1–4 ni los datos del
+contrato legacy. El contrato legacy y sus datos permanecen disponibles bajo
+`LEGACY_CONTRACT_ID`.
 
-1. La organización autoriza `create_campaign` y define un token, el objetivo
-   (suma de montos de hitos), fecha límite, lista única de verificadores y
-   umbral.
-2. La billetera del donante autoriza `donate`. El contrato registra su
-   contribución y transfiere tokens desde su cuenta a la dirección del
-   contrato SAC/token.
-3. La organización autoriza el hash SHA-256 y URI de evidencia de un hito
-   pendiente. Solo se puede presentar el siguiente hito hasta que los
-   anteriores se hayan liberado.
-4. Cada verificador autoriza como máximo un voto por hito. Al alcanzar el
-   umbral, el contrato registra el estado y transfiere el monto del hito a la
-   organización, si hay fondos asignados suficientes.
-5. Si el contrato tiene suficientes aprobaciones pero todavía no hay fondos,
-   cualquier persona puede invocar `release_milestone` cuando ya estén
-   disponibles.
-6. Tras el vencimiento, cada donante puede solicitar una sola vez su parte
-   proporcional del saldo recaudado aún no liberado. El primer reembolso
-   marca la campaña Expired e impide nuevas liberaciones.
-7. Los eventos del contrato son indexados de forma idempotente en SQLite. Las
-   lecturas públicas usan ese índice; auditoría compara sus importes con los
-   getters y el balance actual del token consultados por RPC.
+## Fondos y participaciones
 
-Todas las cantidades on-chain son enteros en unidades base del token. Para XLM,
-un XLM corresponde a 10,000,000 stroops. El contrato no convierte monedas ni
-aplica tarifas del producto.
+Cada campaña tiene un saldo retenido `held` (H), participaciones `total_shares`
+(S) y época `epoch`. Una contribución inicial de `x` crea `x` participaciones;
+las posteriores crean `x*S/H`, con multiplicación checked y división entera.
+El valor actual de una posición es `shares*H/S`. Donar no supone adquirir un
+derecho a más que el saldo real: los redondeos truncan y una donación que no
+genere participaciones falla.
 
-## Roles y fronteras de confianza
+Una salida quema todas las participaciones del donante y transfiere su valor.
+Una liberación reduce H, sin quemar participaciones. Cuando H llega a cero,
+S se reinicia a cero y avanza `epoch`; las posiciones de épocas anteriores
+valen cero. Las contribuciones nuevas pertenecen a la nueva época.
 
-| Rol                | Permisos                                                                                                 |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| Admin del contrato | Inicializa el contrato una sola vez.                                                                     |
-| Organización       | Crea campañas, presenta evidencia y recibe liberaciones. No puede ser verificadora de su propia campaña. |
-| Donante            | Autoriza su transferencia al escrow y, al vencimiento, su reembolso.                                     |
-| Verificador        | Autoriza una aprobación por hito cuando está asignado.                                                   |
-| Relayer/backend    | Simula/ensambla transacciones y remite envelopes firmados; no tiene claves de usuarios.                  |
-| Indexer            | Consume eventos RPC y crea proyecciones consultables; no decide autorizaciones on-chain.                 |
+La organización deposita una garantía al crear la campaña:
+`ceil(goal*bond_bps/10_000)`. El porcentaje se configura una sola vez y no hay
+administrador posterior. En una campaña completada, la garantía vuelve a la
+organización. Si vence sin completar, el primer retiro posterior al deadline
+marca la garantía como Slashed y la añade al fondo repartible entre las
+participaciones vigentes. Si no quedan participaciones, la organización puede
+recuperar la garantía.
 
-## Decisiones de seguridad
+## Flujo
 
-- El contrato exige `require_auth()` para admin, organización, donante y
-  verificador en las operaciones correspondientes.
-- Valida umbral, fecha, hitos, montos, duplicados y dirección de la
-  organización; las sumas y operaciones monetarias usan aritmética checked.
-- Actualiza storage antes de llamar al token. La atomicidad de Soroban debe
-  revertir esos cambios si falla la transferencia externa.
-- Los hitos son secuenciales, los votos duplicados fallan y un hito liberado
-  no se puede liberar de nuevo.
-- SQLite guarda cantidades como texto decimal para evitar pérdida de precisión
-  sobre `i128`; la inserción del evento y su proyección son transaccionales.
-- El backend valida XDR antes de enviarlo: firma(s), una sola operación
-  Soroban, contrato configurado y método de ClearFun permitido.
-- CORS, límite de carga, validación de MIME y bytes mágicos, SHA-256,
-  rate-limiting, Helmet y mensajes de error explícitos limitan la superficie de
-  la API.
-- Secretos de cuentas se configuran fuera del repositorio. Las wallets de
-  usuario firman localmente.
+1. Una organización crea una campaña con uno o más hitos, fechas y una ventana
+   pública de 60 a 2.592.000 segundos. Deposita la garantía en el mismo token.
+2. Donantes distintos de la organización aportan mientras la campaña está
+   activa y antes del deadline. El contrato impide superar `goal` considerando
+   fondos retenidos y ya liberados.
+3. La organización publica hash y URI de evidencia para el siguiente hito
+   completamente financiado. Comienza la ventana pública.
+4. Durante una ventana abierta, cada donante puede retirar toda su propia
+   posición. Nadie vota ni aprueba. Cuando termina la ventana, cualquier cuenta
+   puede invocar la liberación pública del hito.
+5. Si la campaña vence y no hay una liberación ya pendiente, los donantes
+   pueden retirar su valor proporcional, incluida la garantía confiscada si
+   aplica. Una ventana cuya liberación ya venció bloquea los retiros con
+   `ReleasePending`.
+6. El indexer procesa idempotentemente los nueve eventos del contrato nuevo y
+   sincroniza getters de campaña. La API compara la contabilidad de cada
+   campaña con sus getters y ofrece una auditoría de solvencia por token.
 
-El checklist y el pendiente bloqueante de sobre-recaudación están en
-[`SECURITY_CHECKLIST.md`](./SECURITY_CHECKLIST.md).
+Todas las cantidades son enteros en unidades base del token. XLM usa 10.000.000
+stroops por XLM. Soroban revierte la transacción completa si una transferencia
+del token falla; el contrato escribe su estado antes de efectuarla.
 
-## Limitaciones conocidas
+## Autorización y fronteras
 
-- **Sobre-recaudación:** `donate` permite superar `goal`, mientras que la
-  campaña pasa a Completed al liberar exactamente el objetivo. El excedente
-  podría quedar bloqueado porque ya no se permite reembolso en Completed. No
-  usar con fondos de valor hasta limitar aportes a la meta restante o definir
-  y probar una política de excedentes.
-- El reembolso proporcional redondea hacia abajo; residuos pequeños pueden
-  quedar en escrow. El comportamiento y política de residuos deben revisarse.
-- Después del primer reembolso la campaña se marca Expired, por lo que los
-  demás donantes deben reclamar con esa condición; la UI/API deben explicar el
-  estado.
-- El indexer depende de la retención de eventos del RPC. Un apagado superior a
-  la ventana de retención requiere RPC con archivo o recuperación operativa.
-- SQLite es adecuado para demo y baja concurrencia, no para escalado horizontal
-  multi-instancia.
-- Evidencias se guardan en disco en la implementación inicial; una instancia
-  pública necesita almacenamiento duradero/replicado y controles de acceso.
-- La evidencia URI/hash no prueba por sí misma la veracidad material del
-  documento. El proceso humano de verificación y conflictos de interés quedan
-  fuera de cadena.
-- CORS/rate-limit son configuración básica; el relay público necesita límites
-  de costo y monitoreo apropiados. Actualmente no hay endpoint de escritura
-  privilegiado que utilice `ADMIN_API_KEY`.
-- Testnet, Friendbot, endpoints públicos, tarifas y finalidad no equivalen a
-  garantías de producción. El contrato no tiene auditoría externa.
+- La inicialización autentica explícitamente la dirección `initializer` y
+  ocurre una sola vez. El contrato no conserva un admin privilegiado.
+- La organización autoriza crear, cancelar, presentar evidencia y recuperar
+  una garantía bajo las condiciones del contrato.
+- El donante autoriza donar y retirar su propia posición.
+- `release_milestone` es pública por diseño; nadie puede bloquearla con votos.
+- Los getters son lecturas públicas. La API arma XDR sin firmar y solo remite
+  envelopes firmados por wallets.
+- Evidencia, autenticidad material y calidad de ejecución no pueden probarse
+  con un hash. La decisión de aceptar el riesgo se deja individualmente al
+  donante.
 
-## Lecturas de la plataforma
+## Limitaciones honestas
 
-Los endpoints de lectura consultan SQLite; `/campaigns/:id/audit` agrega una
-consulta RPC del estado de campaña y balance de token. Las escrituras se
-preparan mediante `/tx/*` y el cliente debe firmar el XDR con su wallet antes
-de usar `/tx/submit`. El contrato y los eventos on-chain son la fuente de
-verdad para autorizaciones y cambios de estado.
+- El silencio durante la ventana equivale a aceptar la evidencia: al terminar,
+  cualquiera puede liberar el hito.
+- Una evidencia falsa pero convincente puede engañar a los donantes.
+- La garantía no equivale al monto de una estafa grande; cubre como máximo el
+  porcentaje configurado (máximo 50%).
+- El redondeo es hacia abajo y puede dejar polvo; el contrato no ofrece una
+  recuperación administrativa ni disputas.
+- El indexer depende de la retención de eventos del RPC; la SQLite es para
+  demo y baja concurrencia. Evidencias en disco necesitan almacenamiento
+  duradero para un servicio público.
+- Testnet, assets de prueba y endpoints RPC públicos no ofrecen garantías de
+  producción. Se necesita revisión externa antes de usar fondos de valor.

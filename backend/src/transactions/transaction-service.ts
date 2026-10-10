@@ -17,8 +17,7 @@ export interface CreateCampaignTransaction {
   title: string;
   description_uri: string;
   milestones: Array<{ description: string; amount: string }>;
-  verifiers: string[];
-  threshold: number;
+  window_secs: number;
   deadline: string;
 }
 
@@ -36,16 +35,19 @@ export interface SubmitEvidenceTransaction {
   evidence_uri: string;
 }
 
-export interface ApproveMilestoneTransaction {
+export interface WithdrawTransaction {
   source: string;
-  verifier: string;
+  donor: string;
+  campaign_id: number;
+}
+
+export interface ReleaseMilestoneTransaction {
+  source: string;
   campaign_id: number;
   milestone_index: number;
 }
 
-export interface ClaimRefundTransaction {
-  source: string;
-  donor: string;
+export interface ReclaimBondTransaction {
   campaign_id: number;
 }
 
@@ -73,8 +75,7 @@ export class TransactionService {
         (milestone) =>
           [milestone.description, BigInt(milestone.amount)] as const,
       ),
-      verifiers: input.verifiers,
-      threshold: input.threshold,
+      window_secs: BigInt(input.window_secs),
       deadline: BigInt(input.deadline),
     });
     return transaction.toXDR();
@@ -100,18 +101,25 @@ export class TransactionService {
     return transaction.toXDR();
   }
 
-  async approveMilestone(input: ApproveMilestoneTransaction): Promise<string> {
-    const transaction = await this.client(input.source).approve_milestone({
-      verifier: input.verifier,
+  async withdraw(input: WithdrawTransaction): Promise<string> {
+    const transaction = await this.client(input.source).withdraw({
+      donor: input.donor,
+      campaign_id: input.campaign_id,
+    });
+    return transaction.toXDR();
+  }
+
+  async releaseMilestone(input: ReleaseMilestoneTransaction): Promise<string> {
+    const transaction = await this.client(input.source).release_milestone({
       campaign_id: input.campaign_id,
       milestone_index: input.milestone_index,
     });
     return transaction.toXDR();
   }
 
-  async claimRefund(input: ClaimRefundTransaction): Promise<string> {
-    const transaction = await this.client(input.source).claim_refund({
-      donor: input.donor,
+  async reclaimBond(input: ReclaimBondTransaction): Promise<string> {
+    const campaign = await this.getCampaign(input.campaign_id);
+    const transaction = await this.client(campaign.org).reclaim_bond({
       campaign_id: input.campaign_id,
     });
     return transaction.toXDR();
@@ -158,8 +166,9 @@ export class TransactionService {
         "create_campaign",
         "donate",
         "submit_evidence",
-        "approve_milestone",
-        "claim_refund",
+        "withdraw",
+        "release_milestone",
+        "reclaim_bond",
       ].includes(operation.func.invokeContract.functionName.toString())
     ) {
       throw new TransactionInputError(
