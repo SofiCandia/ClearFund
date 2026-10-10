@@ -6,11 +6,6 @@
 
 *Abre una puerta.*
 
-![Stellar](https://img.shields.io/badge/Stellar-Testnet-0A2F6E?style=flat-square)
-![Soroban](https://img.shields.io/badge/Soroban-contrato%20en%20Rust-2FD6BD?style=flat-square)
-![Estado](https://img.shields.io/badge/estado-prototipo-FFAD45?style=flat-square)
-![Hackathon](https://img.shields.io/badge/Stellar-Find%20Your%20Way%20·%20University%20Track-071D45?style=flat-square)
-
 </div>
 
 ---
@@ -245,8 +240,6 @@ docs/                  API del contrato, seguridad, arquitectura y notas
 
 <div align="center">
 
-Hecho en Chile para el University Track del hackathon **Stellar · Find Your Way**.
-
-*Donaciones que se pueden auditar, sobre la red Stellar.*
+Hecho en Chile para la hackathon **Stellar · Find Your Way**.
 
 </div>
