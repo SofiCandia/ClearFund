@@ -1,6 +1,6 @@
 <div align="center">
 
-# Portal
+# ClearFund
 
 **Donaciones que se pueden auditar, sobre la red Stellar.**
 
