@@ -11,20 +11,19 @@ persona que confíe a ciegas.”
 **En pantalla:**  
 Campaña con meta, monto retenido, hitos y tiempo restante.
 
-## (b) Propuesta — 0:35 a 1:05
+## (b) Propuesta — 0:35 a 1:00
 
 **Locución:**  
 “El aporte queda en un contrato de Stellar y la organización evidencia
 por etapas. Al abrirse una ventana pública, cada donante decide si retira su
-propia parte. Si nadie sale, al terminar la ventana cualquiera puede liberar
-esa etapa. La organización deposita una garantía que vuelve al completar la
-campaña o puede sumarse al fondo de salida si la campaña se abandona.”
+propia parte. Si nadie sale, al terminar la ventana el dinero restante se libera
+para esa etapa.”
 
 **En pantalla:**  
 Donantes → fondos retenidos → evidencia → ventana pública → salida individual
 o liberación pública.
 
-## (c) Demo — 1:05 a 2:05
+## (c) Demo — 1:00 a 2:05
 
 **Locución:**  
 “En esta campaña vemos el saldo retenido, el valor actual de cada posición y
