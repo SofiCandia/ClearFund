@@ -1,6 +1,6 @@
 <div align="center">
 
-# ClearFund
+# GivePath 
 
 **Donaciones que se pueden auditar, sobre la red Stellar.**
 
@@ -12,7 +12,7 @@
 
 Cuando donas a una campaña, tu dinero pasa a manos de alguien y ahí se acaba lo que puedes ver. Confías en que la usaron bien, y casi siempre esa confianza descansa en una organización que dice no tener fines de lucro.
 
-ClearFund cambia el orden de las cosas: **el dinero no va a la organización, va a un contrato.** Ahí se queda, dividido en etapas, y solo sale cuando una etapa se cumple. Y quien decide si el dinero sigue o se devuelve no es un tercero: **es cada donante, con su propia parte.** Cada etapa es una puerta cerrada, y los fondos solo pasan cuando se abre.
+GivePath cambia el orden de las cosas: **el dinero no va a la organización, va a un contrato.** Ahí se queda, dividido en etapas, y solo sale cuando una etapa se cumple. Y quien decide si el dinero sigue o se devuelve no es un tercero: **es cada donante, con su propia parte.** Cada etapa es una puerta cerrada, y los fondos solo pasan cuando se abre.
 
 ---
 
@@ -97,7 +97,7 @@ Sirve de filtro contra campañas basura y de compensación parcial si alguien de
 
 ```mermaid
 flowchart TB
-    U["Persona con Freighter<br/>(wallet)"] --> W["ClearFund<br/>app web en Base44"]
+    U["Persona con Freighter<br/>(wallet)"] --> W["GivePath<br/>app web en Base44"]
     W -->|"arma y simula la transacción"| R["Soroban RPC · Testnet"]
     W -->|"la persona firma"| U
     R --> C[("Contrato donations<br/>Rust / Soroban")]
