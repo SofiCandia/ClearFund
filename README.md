@@ -395,7 +395,7 @@ Agradecemos a **Stellar**, en alianza con **iDEAUFRO**, y a la **Agrupación Ban
 <img src="docs/assets/logo_ufro.png" alt="Universidad de La Frontera" height="64">&nbsp;&nbsp;&nbsp;
 <img src="docs/assets/logo_ideaufro.jpg" alt="iDEAUFRO" height="64">&nbsp;&nbsp;&nbsp;
 <img src="docs/assets/logo_stellar.jpg" alt="Stellar" height="64">
-<img src="docs/assets/logo_Bandurr[IA].png" alt="Agrupacion Bandurr[IA]" height="64">
+<img src="docs/assets/logo_BandurrIA.jpg" alt="Agrupacion Bandurr[IA]" height="64">
 <br/>
 
 Hecho en Chile para el University Track del hackathon **Stellar · Find Your Way**.
