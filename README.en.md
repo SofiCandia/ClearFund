@@ -394,11 +394,12 @@ We thank **Stellar**, in partnership with **iDEAUFRO**, and the **Agrupación Ba
 
 <div align="center">
 
-<img src="docs/assets/logo-ufro.png" alt="Universidad de La Frontera" height="64">&nbsp;&nbsp;&nbsp;
-<img src="docs/assets/logo-ideaufro.png" alt="iDEAUFRO" height="64">&nbsp;&nbsp;&nbsp;
-<img src="docs/assets/logo-stellar.png" alt="Stellar" height="64">
-
+<img src="docs/assets/logo_ufro.png" alt="Universidad de La Frontera" height="64">&nbsp;&nbsp;&nbsp;
+<img src="docs/assets/logo_ideaufro.jpg" alt="iDEAUFRO" height="64">&nbsp;&nbsp;&nbsp;
+<img src="docs/assets/logo_stellar.jpg" alt="Stellar" height="64">
+<img src="docs/assets/logo_BandurrIA.jpg" alt="Agrupacion Bandurr[IA]" height="64">
 <br/>
+
 
 Made in Chile for the University Track of the **Stellar · Find Your Way** hackathon.
 
